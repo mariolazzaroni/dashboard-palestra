@@ -11,6 +11,8 @@ GymBoard e una Progressive Web App mobile-first per registrare e monitorare gli 
 - Storico filtrabile per tipo e mese
 - Eliminazione delle sessioni registrate
 - Grafico XY per carico e volume di ogni singolo esercizio
+- Registrazione giornaliera e grafico del peso corporeo
+- Promemoria in Home quando manca la misurazione di oggi
 - Persistenza locale tramite `localStorage`
 - Installazione come PWA e utilizzo offline
 - Struttura dati separata, pronta per un futuro adapter Supabase
@@ -78,5 +80,6 @@ Il modello dati e composto da:
 - `plan_exercises`: esercizi contenuti nelle schede
 - `workouts`: sessioni completate
 - `exercise_results`: serie, ripetizioni, carico e volume per esercizio
+- `body_weights`: misurazioni giornaliere del peso corporeo
 
 Per mantenere anche il funzionamento offline servira infine una sincronizzazione tra `localStorage` e Supabase quando la connessione torna disponibile.

@@ -34,14 +34,25 @@ create table public.exercise_results (
   volume numeric generated always as (sets * reps * load) stored
 );
 
+create table public.body_weights (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  measured_on date not null,
+  weight numeric not null check (weight between 20 and 400),
+  created_at timestamptz not null default now(),
+  unique (user_id, measured_on)
+);
+
 create index workouts_user_date_idx on public.workouts(user_id, performed_at desc);
 create index exercise_results_workout_idx on public.exercise_results(workout_id);
 create index plan_exercises_plan_idx on public.plan_exercises(plan_id, position);
+create index body_weights_user_date_idx on public.body_weights(user_id, measured_on desc);
 
 alter table public.plans enable row level security;
 alter table public.plan_exercises enable row level security;
 alter table public.workouts enable row level security;
 alter table public.exercise_results enable row level security;
+alter table public.body_weights enable row level security;
 
 create policy "Users manage their plans"
 on public.plans for all to authenticated
@@ -78,3 +89,8 @@ with check (exists (
   where workouts.id = exercise_results.workout_id
     and workouts.user_id = (select auth.uid())
 ));
+
+create policy "Users manage their body weights"
+on public.body_weights for all to authenticated
+using ((select auth.uid()) = user_id)
+with check ((select auth.uid()) = user_id);

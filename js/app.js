@@ -1,4 +1,4 @@
-import { planStore, workoutStore } from "./data-store.js";
+import { bodyWeightStore, planStore, workoutStore } from "./data-store.js";
 
 const app = document.querySelector("#app");
 const toast = document.querySelector("#toast");
@@ -18,6 +18,15 @@ const formatDate = (date, options) =>
 const formatNumber = (number) => new Intl.NumberFormat("it-IT", { maximumFractionDigits: 1 }).format(number);
 const getWorkouts = () =>
   workoutStore.getAll().sort((a, b) => new Date(b.date) - new Date(a.date));
+const getBodyWeights = () =>
+  bodyWeightStore.getAll().sort((a, b) => b.date.localeCompare(a.date));
+
+const localDateKey = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 
 function showToast(message) {
   toast.textContent = message;
@@ -56,9 +65,20 @@ function weeklyStats(workouts) {
 
 function renderHome() {
   const workouts = getWorkouts();
+  const bodyWeights = getBodyWeights();
+  const latestWeight = bodyWeights[0];
+  const recordedToday = latestWeight?.date === localDateKey();
   const stats = weeklyStats(workouts);
   app.innerHTML = `
-    <section class="page-header"><div><p class="eyebrow">Il tuo diario</p><h1>Ciao, Mario.</h1></div></section>
+    <section class="page-header"><div><p class="eyebrow">Il tuo diario</p><h1>Ciao, Mario.</h1><p class="last-weight">${latestWeight ? `Ultimo peso: <strong>${formatNumber(latestWeight.weight)} kg</strong>, registrato il ${formatDate(`${latestWeight.date}T12:00:00`, { day: "numeric", month: "long", year: "numeric" })}.` : "Non hai ancora registrato il peso corporeo."}</p></div></section>
+    ${
+      recordedToday
+        ? ""
+        : `<section class="weight-reminder" role="alert">
+            <div><p class="eyebrow">Promemoria di oggi</p><h2>Registra il tuo peso</h2><p>${latestWeight ? "L'ultima misurazione non è di oggi." : "Inizia a costruire il tuo andamento corporeo."}</p></div>
+            <a class="button" href="#progress">Aggiungi peso</a>
+          </section>`
+    }
     <section class="hero">
       <p class="eyebrow">La tua routine</p>
       <h2>Costruisci, registra, migliora.</h2>
@@ -236,24 +256,29 @@ function getExercisePoints(workouts, exerciseName, metric) {
     });
 }
 
-function lineChart(points, metric) {
-  if (!points.length) return '<div class="empty-state">Nessun dato per questo esercizio.</div>';
+function lineChart(points, metric, options = {}) {
+  if (!points.length) return `<div class="empty-state">${options.emptyMessage || "Nessun dato disponibile."}</div>`;
   const width = 620;
   const height = 260;
   const padding = { top: 25, right: 20, bottom: 45, left: 55 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
-  const max = Math.max(...points.map((point) => point.value), 1);
+  const values = points.map((point) => point.value);
+  const dataMax = Math.max(...values);
+  const dataMin = Math.min(...values);
+  const min = options.adaptiveScale ? Math.max(0, Math.floor(dataMin - 2)) : 0;
+  const max = options.adaptiveScale ? Math.ceil(dataMax + 2) : Math.max(dataMax, 1);
+  const range = Math.max(max - min, 1);
   const x = (index) => padding.left + (points.length === 1 ? chartWidth / 2 : (index / (points.length - 1)) * chartWidth);
-  const y = (value) => padding.top + chartHeight - (value / max) * chartHeight;
+  const y = (value) => padding.top + chartHeight - ((value - min) / range) * chartHeight;
   const coordinates = points.map((point, index) => `${x(index)},${y(point.value)}`).join(" ");
-  const unit = metric === "load" ? "kg" : "kg vol.";
+  const unit = metric === "volume" ? "kg vol." : "kg";
   return `
     <div class="xy-chart-wrap">
       <svg class="xy-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Andamento ${unit}">
         <line class="axis" x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${padding.top + chartHeight}" />
         <line class="axis" x1="${padding.left}" y1="${padding.top + chartHeight}" x2="${width - padding.right}" y2="${padding.top + chartHeight}" />
-        ${[0, 0.5, 1].map((ratio) => `<g><line class="grid-line" x1="${padding.left}" y1="${y(max * ratio)}" x2="${width - padding.right}" y2="${y(max * ratio)}" /><text class="axis-label" x="${padding.left - 10}" y="${y(max * ratio) + 4}" text-anchor="end">${formatNumber(max * ratio)}</text></g>`).join("")}
+        ${[0, 0.5, 1].map((ratio) => { const value = min + range * ratio; return `<g><line class="grid-line" x1="${padding.left}" y1="${y(value)}" x2="${width - padding.right}" y2="${y(value)}" /><text class="axis-label" x="${padding.left - 10}" y="${y(value) + 4}" text-anchor="end">${formatNumber(value)}</text></g>`; }).join("")}
         <polyline class="progress-line" points="${coordinates}" />
         ${points.map((point, index) => `<g><circle class="progress-point" cx="${x(index)}" cy="${y(point.value)}" r="5" /><text class="point-value" x="${x(index)}" y="${y(point.value) - 11}" text-anchor="middle">${formatNumber(point.value)}</text><text class="axis-label" x="${x(index)}" y="${height - 17}" text-anchor="middle">${formatDate(point.date, { day: "2-digit", month: "2-digit" })}</text></g>`).join("")}
       </svg>
@@ -262,9 +287,20 @@ function lineChart(points, metric) {
 
 function renderProgress() {
   const workouts = getWorkouts();
+  const bodyWeights = getBodyWeights();
   const exerciseNames = getExerciseNames(workouts);
   app.innerHTML = `
     <section class="page-header"><div><p class="eyebrow">Progressi</p><h1>Un esercizio alla volta.</h1></div></section>
+    <section class="card body-weight-card">
+      <div class="weight-heading"><div><p class="eyebrow">Peso corporeo</p><h2>Registra la misurazione</h2></div>${bodyWeights[0] ? `<strong>${formatNumber(bodyWeights[0].weight)} kg</strong>` : ""}</div>
+      <form id="body-weight-form" class="weight-form">
+        <div class="field"><label for="weight-date">Data</label><input id="weight-date" name="date" type="date" max="${localDateKey()}" value="${localDateKey()}" required /></div>
+        <div class="field"><label for="body-weight">Peso (kg)</label><input id="body-weight" name="weight" type="number" min="20" max="400" step="0.1" placeholder="75,5" required /></div>
+        <button class="button" type="submit">Salva peso</button>
+      </form>
+      <div id="body-weight-chart">${lineChart([...bodyWeights].reverse().map((entry) => ({ date: `${entry.date}T12:00:00`, value: entry.weight })), "bodyWeight", { adaptiveScale: true, emptyMessage: "Registra il primo peso per creare il grafico." })}</div>
+    </section>
+    <div class="section-heading"><h2>Progressi esercizi</h2></div>
     <p class="muted">Scegli un esercizio e confronta carico o volume nel tempo.</p>
     ${exerciseNames.length ? `
       <div class="filters">
@@ -273,6 +309,14 @@ function renderProgress() {
       </div>
       <section class="card chart-card"><div id="exercise-chart"></div></section>
       <section class="stats-grid" id="exercise-stats"></section>` : '<div class="empty-state">Registra almeno un allenamento per vedere i grafici dei tuoi esercizi.</div>'}`;
+
+  document.querySelector("#body-weight-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    bodyWeightStore.upsertByDate({ date: String(data.get("date")), weight: Number(data.get("weight")) });
+    showToast("Peso registrato");
+    renderProgress();
+  });
 
   if (!exerciseNames.length) return;
   const updateChart = () => {

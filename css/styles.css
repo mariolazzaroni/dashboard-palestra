@@ -93,6 +93,22 @@ button {
   transform: rotate(-5deg);
 }
 
+.topbar-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.user-badge {
+  max-width: 110px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .icon-button,
 .button {
   min-height: 44px;
@@ -445,6 +461,83 @@ h3 {
   text-align: center;
 }
 
+.loading-state {
+  display: grid;
+  min-height: 55vh;
+  place-content: center;
+  color: var(--muted);
+  text-align: center;
+}
+
+.loader {
+  width: 34px;
+  height: 34px;
+  margin: 0 auto 12px;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.auth-mode .bottom-nav {
+  display: none;
+}
+
+.auth-mode .app-shell {
+  padding-bottom: 30px;
+}
+
+.auth-card {
+  width: min(100%, 480px);
+  margin: 8vh auto 0;
+  padding: clamp(22px, 6vw, 36px);
+  box-shadow: var(--shadow);
+}
+
+.auth-card h1 {
+  margin-bottom: 16px;
+  font-size: clamp(2rem, 9vw, 3rem);
+}
+
+.auth-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.remember-control {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  width: fit-content;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.remember-control input {
+  width: 19px;
+  height: 19px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.auth-message {
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.data-error {
+  margin-top: 12vh;
+}
+
 .chart-card {
   padding-bottom: 10px;
 }
@@ -631,6 +724,11 @@ h3 {
   transform: translate(-50%, 0);
 }
 
+.toast.error {
+  background: var(--danger);
+  color: #ffffff;
+}
+
 @media (min-width: 640px) {
   .app-shell {
     padding-inline: 26px;
@@ -653,6 +751,14 @@ h3 {
 
   .weight-reminder .button {
     width: 100%;
+  }
+
+  .user-badge {
+    display: none;
+  }
+
+  .auth-actions {
+    grid-template-columns: 1fr;
   }
 }
 

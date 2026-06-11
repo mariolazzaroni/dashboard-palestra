@@ -1,10 +1,13 @@
-const CACHE_NAME = "gymboard-v2";
+const CACHE_NAME = "gymboard-v6";
 const APP_ASSETS = [
   "./",
   "./index.html",
   "./css/styles.css",
   "./js/app.js",
+  "./js/auth-storage.js",
+  "./js/config.js",
   "./js/data-store.js",
+  "./js/supabase-client.js",
   "./manifest.webmanifest",
   "./assets/icon.svg",
   "./assets/icon-192.png",

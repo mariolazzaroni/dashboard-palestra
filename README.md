@@ -13,7 +13,10 @@ GymBoard e una Progressive Web App mobile-first per registrare e monitorare gli 
 - Grafico XY per carico e volume di ogni singolo esercizio
 - Registrazione giornaliera e grafico del peso corporeo
 - Promemoria in Home quando manca la misurazione di oggi
-- Persistenza locale tramite `localStorage`
+- Login e registrazione con nome, email e password
+- Opzione **Ricordami** per scegliere la durata della sessione
+- Persistenza online tramite Supabase
+- Fallback `localStorage` soltanto quando Supabase non è configurato
 - Installazione come PWA e utilizzo offline
 - Struttura dati separata, pronta per un futuro adapter Supabase
 
@@ -54,25 +57,33 @@ Tutti i percorsi sono relativi, quindi l'app funziona anche all'indirizzo `https
 ├── assets/              # Icone PWA
 ├── css/styles.css       # Stili mobile-first
 ├── js/app.js            # UI, routing e interazioni
-├── js/data-store.js     # Adapter dati basato su localStorage
+├── js/auth-storage.js   # Persistenza sessione Ricordami
+├── js/config.js         # URL e publishable key Supabase
+├── js/data-store.js     # Adapter Supabase e fallback localStorage
+├── js/supabase-client.js # Client Supabase caricato via CDN
 ├── index.html           # Shell dell'app
 ├── manifest.webmanifest # Metadati di installazione
 ├── supabase-schema.sql  # Tabelle e regole di sicurezza Supabase
 └── sw.js                # Cache e funzionamento offline
 ```
 
-## Collegamento a Supabase
+## Supabase
 
-La versione attuale usa `localStorage`. Il file `supabase-schema.sql` contiene uno schema pronto per salvare i dati online separandoli per utente.
+Supabase è configurato e attivo. `js/config.js` contiene esclusivamente Project URL e Publishable key, entrambe utilizzabili nel browser quando le tabelle sono protette da Row Level Security. Non sono presenti Secret key, `service_role` o connection string.
 
-1. Crea un progetto su [Supabase](https://supabase.com/dashboard).
-2. Apri **SQL Editor**, incolla `supabase-schema.sql` ed eseguilo.
-3. Abilita un metodo di accesso in **Authentication > Providers**, per esempio email e password.
-4. Recupera Project URL e Publishable key dal pannello **Connect** o da **Settings > API Keys**.
-5. Inizializza `@supabase/supabase-js` nel browser con URL e Publishable key.
-6. Sostituisci gli adapter `workoutStore` e `planStore` con funzioni asincrone che leggono e scrivono le tabelle Supabase.
+Prima di usare la dashboard:
 
-La Publishable key puo essere usata nel frontend. Non inserire mai una Secret key o la vecchia `service_role` key in questa PWA o nel repository pubblico. La sicurezza dei dati utente dipende dalle policy Row Level Security incluse nello schema.
+1. Apri il progetto Supabase e vai in **SQL Editor**.
+2. Esegui l'intero file `supabase-schema.sql` per creare tabelle, indici e policy RLS.
+3. Verifica in **Authentication > Providers** che Email sia abilitato.
+4. In **Authentication > URL Configuration**, aggiungi l'URL GitHub Pages tra i Redirect URLs.
+5. Apri GymBoard, inserisci nome, email e password, quindi scegli **Crea account**.
+
+Se la conferma email è abilitata, il primo accesso richiede il link ricevuto via email. Nei login successivi il nome inserito aggiorna i metadata del profilo e viene mostrato nella Home.
+
+Con **Ricordami** selezionato, Supabase conserva la sessione in `localStorage` e l'accesso rimane disponibile dopo la chiusura del browser. Senza selezione, la sessione usa `sessionStorage`: rimane durante i refresh della scheda, ma viene eliminata alla chiusura della scheda o del browser. Il pulsante **Esci** invalida la sessione e rimuove i token da entrambi gli storage.
+
+`supabase-js` viene importato direttamente da jsDelivr come modulo ESM, senza npm e senza build. La compatibilità con GitHub Pages rimane invariata.
 
 Il modello dati e composto da:
 
@@ -82,4 +93,4 @@ Il modello dati e composto da:
 - `exercise_results`: serie, ripetizioni, carico e volume per esercizio
 - `body_weights`: misurazioni giornaliere del peso corporeo
 
-Per mantenere anche il funzionamento offline servira infine una sincronizzazione tra `localStorage` e Supabase quando la connessione torna disponibile.
+Quando Supabase è configurato, i dati vengono letti e scritti solo online. Il fallback locale viene selezionato esclusivamente lasciando vuoti URL o publishable key in `js/config.js`.

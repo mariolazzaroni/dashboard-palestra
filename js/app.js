@@ -1,8 +1,13 @@
 import { bodyWeightStore, planStore, workoutStore } from "./data-store.js";
+import { isRememberSessionEnabled, setRememberSession } from "./auth-storage.js";
+import { isSupabaseConfigured, supabase, supabaseInitializationError } from "./supabase-client.js";
 
 const app = document.querySelector("#app");
 const toast = document.querySelector("#toast");
 const installButton = document.querySelector("#install-button");
+const logoutButton = document.querySelector("#logout-button");
+const userBadge = document.querySelector("#user-badge");
+let currentUser = null;
 let deferredInstallPrompt;
 
 const escapeHtml = (value) =>
@@ -15,11 +20,8 @@ const escapeHtml = (value) =>
 
 const formatDate = (date, options) =>
   new Intl.DateTimeFormat("it-IT", options).format(new Date(date));
-const formatNumber = (number) => new Intl.NumberFormat("it-IT", { maximumFractionDigits: 1 }).format(number);
-const getWorkouts = () =>
-  workoutStore.getAll().sort((a, b) => new Date(b.date) - new Date(a.date));
-const getBodyWeights = () =>
-  bodyWeightStore.getAll().sort((a, b) => b.date.localeCompare(a.date));
+const formatNumber = (number) =>
+  new Intl.NumberFormat("it-IT", { maximumFractionDigits: 1 }).format(number);
 
 const localDateKey = (date = new Date()) => {
   const year = date.getFullYear();
@@ -28,25 +30,149 @@ const localDateKey = (date = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
-function showToast(message) {
+function displayName() {
+  return currentUser?.user_metadata?.display_name?.trim() || localStorage.getItem("gymboard-display-name") || "Utente";
+}
+
+function showToast(message, isError = false) {
   toast.textContent = message;
+  toast.classList.toggle("error", isError);
   toast.classList.add("visible");
-  window.setTimeout(() => toast.classList.remove("visible"), 2400);
+  window.setTimeout(() => toast.classList.remove("visible"), 3200);
+}
+
+function showLoading() {
+  app.innerHTML = '<div class="loading-state"><span class="loader" aria-hidden="true"></span><p>Caricamento...</p></div>';
+}
+
+function showDataError(error) {
+  console.error(error);
+  app.innerHTML = `
+    <section class="empty-state data-error">
+      <h2>Dati Supabase non disponibili</h2>
+      <p>${escapeHtml(error.message || "Controlla la configurazione del progetto.")}</p>
+      <button class="button" id="retry-button">Riprova</button>
+    </section>`;
+  document.querySelector("#retry-button").addEventListener("click", router);
+}
+
+async function getWorkouts() {
+  return (await workoutStore.getAll()).sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
+async function getBodyWeights() {
+  return (await bodyWeightStore.getAll()).sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function setAuthenticatedLayout(authenticated) {
+  document.body.classList.toggle("auth-mode", !authenticated);
+  logoutButton.hidden = !authenticated || !isSupabaseConfigured;
+  userBadge.hidden = !authenticated;
+  userBadge.textContent = authenticated ? displayName() : "";
+}
+
+function renderAuth(message = "") {
+  setAuthenticatedLayout(false);
+  app.innerHTML = `
+    <section class="auth-card card">
+      <p class="eyebrow">GymBoard</p>
+      <h1>Il tuo allenamento, ovunque.</h1>
+      <p class="muted">Accedi oppure crea un account. Il nome inserito verrà usato nel saluto della dashboard.</p>
+      ${message ? `<p class="auth-message" role="status">${escapeHtml(message)}</p>` : ""}
+      <form id="auth-form" class="stack-form">
+        <div class="field"><label for="auth-name">Il tuo nome</label><input id="auth-name" name="name" autocomplete="name" maxlength="50" placeholder="Mario" required /></div>
+        <div class="field"><label for="auth-email">Email</label><input id="auth-email" name="email" type="email" autocomplete="email" required /></div>
+        <div class="field"><label for="auth-password">Password</label><input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="6" required /></div>
+        <label class="remember-control" for="auth-remember">
+          <input id="auth-remember" name="remember" type="checkbox" ${isRememberSessionEnabled() ? "checked" : ""} />
+          <span>Ricordami</span>
+        </label>
+        <div class="auth-actions">
+          <button class="button" type="submit">Accedi</button>
+          <button class="button secondary" id="signup-button" type="button">Crea account</button>
+        </div>
+      </form>
+    </section>`;
+
+  const form = document.querySelector("#auth-form");
+  form.addEventListener("submit", (event) => handleAuth(event, "signin"));
+  document.querySelector("#signup-button").addEventListener("click", () => handleAuth({ preventDefault() {} }, "signup"));
+}
+
+function authValues() {
+  const form = document.querySelector("#auth-form");
+  if (!form.reportValidity()) return null;
+  const data = new FormData(form);
+  return {
+    name: String(data.get("name")).trim(),
+    email: String(data.get("email")).trim(),
+    password: String(data.get("password")),
+    remember: data.get("remember") === "on",
+  };
+}
+
+async function handleAuth(event, action) {
+  event.preventDefault();
+  const values = authValues();
+  if (!values) return;
+  const buttons = document.querySelectorAll("#auth-form button");
+  buttons.forEach((button) => (button.disabled = true));
+
+  try {
+    if (!isSupabaseConfigured) {
+      localStorage.setItem("gymboard-display-name", values.name);
+      currentUser = { user_metadata: { display_name: values.name } };
+      await showApp();
+      return;
+    }
+
+    setRememberSession(values.remember);
+
+    if (action === "signup") {
+      const { data, error } = await supabase.auth.signUp({
+        email: values.email,
+        password: values.password,
+        options: {
+          data: { display_name: values.name },
+          emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
+        },
+      });
+      if (error) throw error;
+      if (!data.session) {
+        renderAuth("Account creato. Controlla la tua email per confermare l'accesso.");
+        return;
+      }
+      currentUser = data.user;
+    } else {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: values.email,
+        password: values.password,
+      });
+      if (error) throw error;
+      const { data: updated, error: updateError } = await supabase.auth.updateUser({
+        data: { display_name: values.name },
+      });
+      if (updateError) throw updateError;
+      currentUser = updated.user || data.user;
+    }
+    await showApp();
+  } catch (error) {
+    showToast(error.message, true);
+    buttons.forEach((button) => (button.disabled = false));
+  }
+}
+
+async function showApp() {
+  setAuthenticatedLayout(true);
+  await router();
 }
 
 function workoutCard(workout, removable = false) {
   const date = new Date(workout.date);
-  const exerciseCount = workout.exercises?.length || 0;
   return `
     <article class="card workout-card">
-      <div class="date-tile">
-        <span>${formatDate(date, { month: "short" })}</span>
-        <strong>${date.getDate()}</strong>
-      </div>
-      <div>
-        <h3>${escapeHtml(workout.name)}</h3>
-        <p class="workout-meta">${workout.duration} min · ${exerciseCount} esercizi · ${formatNumber(workout.volume)} kg</p>
-      </div>
+      <div class="date-tile"><span>${formatDate(date, { month: "short" })}</span><strong>${date.getDate()}</strong></div>
+      <div><h3>${escapeHtml(workout.name)}</h3><p class="workout-meta">${workout.duration} min · ${workout.exercises?.length || 0} esercizi · ${formatNumber(workout.volume)} kg</p></div>
       ${removable ? `<button class="button danger" data-remove-workout="${workout.id}" aria-label="Elimina allenamento">×</button>` : ""}
     </article>`;
 }
@@ -63,180 +189,90 @@ function weeklyStats(workouts) {
   };
 }
 
-function renderHome() {
-  const workouts = getWorkouts();
-  const bodyWeights = getBodyWeights();
+async function renderHome() {
+  const [workouts, bodyWeights] = await Promise.all([getWorkouts(), getBodyWeights()]);
   const latestWeight = bodyWeights[0];
   const recordedToday = latestWeight?.date === localDateKey();
   const stats = weeklyStats(workouts);
   app.innerHTML = `
-    <section class="page-header"><div><p class="eyebrow">Il tuo diario</p><h1>Ciao, Mario.</h1><p class="last-weight">${latestWeight ? `Ultimo peso: <strong>${formatNumber(latestWeight.weight)} kg</strong>, registrato il ${formatDate(`${latestWeight.date}T12:00:00`, { day: "numeric", month: "long", year: "numeric" })}.` : "Non hai ancora registrato il peso corporeo."}</p></div></section>
-    ${
-      recordedToday
-        ? ""
-        : `<section class="weight-reminder" role="alert">
-            <div><p class="eyebrow">Promemoria di oggi</p><h2>Registra il tuo peso</h2><p>${latestWeight ? "L'ultima misurazione non è di oggi." : "Inizia a costruire il tuo andamento corporeo."}</p></div>
-            <a class="button" href="#progress">Aggiungi peso</a>
-          </section>`
-    }
-    <section class="hero">
-      <p class="eyebrow">La tua routine</p>
-      <h2>Costruisci, registra, migliora.</h2>
-      <p>Crea le schede A/B, inserisci i carichi per ogni esercizio e segui i progressi nel tempo.</p>
-      <a class="button" href="#workouts">Gestisci schede</a>
-    </section>
-    <section class="stats-grid" aria-label="Riepilogo settimanale">
-      <article class="stat-card"><strong>${stats.count}</strong><span>Sessioni</span></article>
-      <article class="stat-card"><strong>${stats.minutes}</strong><span>Minuti</span></article>
-      <article class="stat-card"><strong>${formatNumber(stats.volume / 1000)}t</strong><span>Volume</span></article>
-    </section>
+    <section class="page-header"><div><p class="eyebrow">Il tuo diario</p><h1>Ciao, ${escapeHtml(displayName())}.</h1><p class="last-weight">${latestWeight ? `Ultimo peso: <strong>${formatNumber(latestWeight.weight)} kg</strong>, registrato il ${formatDate(`${latestWeight.date}T12:00:00`, { day: "numeric", month: "long", year: "numeric" })}.` : "Non hai ancora registrato il peso corporeo."}</p></div></section>
+    ${recordedToday ? "" : `<section class="weight-reminder" role="alert"><div><p class="eyebrow">Promemoria di oggi</p><h2>Registra il tuo peso</h2><p>${latestWeight ? "L'ultima misurazione non è di oggi." : "Inizia a costruire il tuo andamento corporeo."}</p></div><a class="button" href="#progress">Aggiungi peso</a></section>`}
+    <section class="hero"><p class="eyebrow">La tua routine</p><h2>Costruisci, registra, migliora.</h2><p>Crea le schede A/B, inserisci i carichi per ogni esercizio e segui i progressi nel tempo.</p><a class="button" href="#workouts">Gestisci schede</a></section>
+    <section class="stats-grid" aria-label="Riepilogo settimanale"><article class="stat-card"><strong>${stats.count}</strong><span>Sessioni</span></article><article class="stat-card"><strong>${stats.minutes}</strong><span>Minuti</span></article><article class="stat-card"><strong>${formatNumber(stats.volume / 1000)}t</strong><span>Volume</span></article></section>
     <div class="section-heading"><h2>Ultimi allenamenti</h2><a href="#history">Vedi tutti</a></div>
-    <div class="workout-list">
-      ${workouts.length ? workouts.slice(0, 3).map((workout) => workoutCard(workout)).join("") : '<div class="empty-state">Crea una scheda e registra il primo allenamento.</div>'}
-    </div>`;
-}
-
-function renderWorkouts() {
-  const plans = planStore.getAll();
-  app.innerHTML = `
-    <section class="page-header"><div><p class="eyebrow">Allenamenti</p><h1>Le tue schede.</h1></div></section>
-    <section class="card plan-creator">
-      <h2>Crea una scheda</h2>
-      <form id="plan-form" class="stack-form">
-        <div class="field"><label for="plan-name">Nome</label><input id="plan-name" name="name" maxlength="50" placeholder="Lista A" required /></div>
-        <div class="field"><label for="plan-exercises">Esercizi, uno per riga</label><textarea id="plan-exercises" name="exercises" rows="5" maxlength="800" placeholder="Panca piana&#10;Rematore&#10;Squat" required></textarea></div>
-        <button class="button" type="submit">Salva scheda</button>
-      </form>
-    </section>
-    <div class="section-heading"><h2>Schede salvate</h2></div>
-    <section class="template-grid">
-      ${plans.length ? plans.map(planCard).join("") : '<div class="empty-state">Nessuna scheda. Crea la tua Lista A qui sopra.</div>'}
-    </section>
-    <section class="card session-card" id="session-card" hidden></section>`;
-
-  document.querySelector("#plan-form").addEventListener("submit", (event) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const exercises = String(data.get("exercises"))
-      .split(/\n|,/)
-      .map((name) => name.trim())
-      .filter(Boolean);
-    if (!exercises.length) return showToast("Aggiungi almeno un esercizio");
-    planStore.add({ name: String(data.get("name")).trim(), exercises });
-    showToast("Scheda creata");
-    renderWorkouts();
-  });
-
-  document.querySelectorAll("[data-start-plan]").forEach((button) => {
-    button.addEventListener("click", () => openSession(button.dataset.startPlan));
-  });
-  document.querySelectorAll("[data-remove-plan]").forEach((button) => {
-    button.addEventListener("click", () => {
-      planStore.remove(button.dataset.removePlan);
-      showToast("Scheda eliminata");
-      renderWorkouts();
-    });
-  });
+    <div class="workout-list">${workouts.length ? workouts.slice(0, 3).map((workout) => workoutCard(workout)).join("") : '<div class="empty-state">Crea una scheda e registra il primo allenamento.</div>'}</div>`;
 }
 
 function planCard(plan) {
-  return `
-    <article class="card template-card">
-      <div>
-        <h3>${escapeHtml(plan.name)}</h3>
-        <p class="workout-meta">${plan.exercises.length} esercizi</p>
-        <div class="exercise-tags">${plan.exercises.map((name) => `<span class="tag">${escapeHtml(name)}</span>`).join("")}</div>
-      </div>
-      <div class="card-actions">
-        <button class="button" data-start-plan="${plan.id}">Avvia</button>
-        <button class="button danger" data-remove-plan="${plan.id}" aria-label="Elimina scheda">×</button>
-      </div>
-    </article>`;
+  return `<article class="card template-card"><div><h3>${escapeHtml(plan.name)}</h3><p class="workout-meta">${plan.exercises.length} esercizi</p><div class="exercise-tags">${plan.exercises.map((name) => `<span class="tag">${escapeHtml(name)}</span>`).join("")}</div></div><div class="card-actions"><button class="button" data-start-plan="${plan.id}">Avvia</button><button class="button danger" data-remove-plan="${plan.id}" aria-label="Elimina scheda">×</button></div></article>`;
 }
 
-function openSession(planId) {
-  const plan = planStore.getAll().find((item) => item.id === planId);
+async function renderWorkouts() {
+  const plans = await planStore.getAll();
+  app.innerHTML = `
+    <section class="page-header"><div><p class="eyebrow">Allenamenti</p><h1>Le tue schede.</h1></div></section>
+    <section class="card plan-creator"><h2>Crea una scheda</h2><form id="plan-form" class="stack-form"><div class="field"><label for="plan-name">Nome</label><input id="plan-name" name="name" maxlength="50" placeholder="Lista A" required /></div><div class="field"><label for="plan-exercises">Esercizi, uno per riga</label><textarea id="plan-exercises" name="exercises" rows="5" maxlength="800" placeholder="Panca piana&#10;Rematore&#10;Squat" required></textarea></div><button class="button" type="submit">Salva scheda</button></form></section>
+    <div class="section-heading"><h2>Schede salvate</h2></div><section class="template-grid">${plans.length ? plans.map(planCard).join("") : '<div class="empty-state">Nessuna scheda. Crea la tua Lista A qui sopra.</div>'}</section><section class="card session-card" id="session-card" hidden></section>`;
+
+  document.querySelector("#plan-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const exercises = String(data.get("exercises")).split(/\n|,/).map((name) => name.trim()).filter(Boolean);
+    if (!exercises.length) return showToast("Aggiungi almeno un esercizio", true);
+    try {
+      await planStore.add({ name: String(data.get("name")).trim(), exercises });
+      showToast("Scheda creata");
+      await renderWorkouts();
+    } catch (error) { showToast(error.message, true); }
+  });
+  document.querySelectorAll("[data-start-plan]").forEach((button) => button.addEventListener("click", () => openSession(button.dataset.startPlan, plans)));
+  document.querySelectorAll("[data-remove-plan]").forEach((button) => button.addEventListener("click", async () => {
+    try { await planStore.remove(button.dataset.removePlan); showToast("Scheda eliminata"); await renderWorkouts(); } catch (error) { showToast(error.message, true); }
+  }));
+}
+
+function openSession(planId, plans) {
+  const plan = plans.find((item) => item.id === planId);
   if (!plan) return;
   const sessionCard = document.querySelector("#session-card");
   sessionCard.hidden = false;
-  sessionCard.innerHTML = `
-    <h2>${escapeHtml(plan.name)}</h2>
-    <p class="muted">Inserisci i dati svolti. Il volume viene calcolato come serie × ripetizioni × carico.</p>
-    <form id="session-form" class="stack-form">
-      <input type="hidden" name="planId" value="${plan.id}" />
-      <div class="field"><label for="duration">Durata (min)</label><input id="duration" name="duration" type="number" min="1" value="60" required /></div>
-      <div class="exercise-entry-list">
-        ${plan.exercises.map((name, index) => exerciseEntry(name, index)).join("")}
-      </div>
-      <button class="button" type="submit">Salva allenamento</button>
-    </form>`;
+  sessionCard.innerHTML = `<h2>${escapeHtml(plan.name)}</h2><p class="muted">Inserisci i dati svolti. Il volume è serie × ripetizioni × carico.</p><form id="session-form" class="stack-form"><input type="hidden" name="planId" value="${plan.id}" /><div class="field"><label for="duration">Durata (min)</label><input id="duration" name="duration" type="number" min="1" value="60" required /></div><div class="exercise-entry-list">${plan.exercises.map((name, index) => exerciseEntry(name, index)).join("")}</div><button class="button" type="submit">Salva allenamento</button></form>`;
   sessionCard.scrollIntoView({ behavior: "smooth", block: "start" });
-  document.querySelector("#session-form").addEventListener("submit", saveSession);
+  document.querySelector("#session-form").addEventListener("submit", (event) => saveSession(event, plan));
 }
 
 function exerciseEntry(name, index) {
-  return `
-    <fieldset class="exercise-entry">
-      <legend>${escapeHtml(name)}</legend>
-      <input type="hidden" name="exercise-${index}-name" value="${escapeHtml(name)}" />
-      <div class="exercise-values">
-        <div class="field"><label for="sets-${index}">Serie</label><input id="sets-${index}" name="exercise-${index}-sets" type="number" min="1" value="3" required /></div>
-        <div class="field"><label for="reps-${index}">Rip.</label><input id="reps-${index}" name="exercise-${index}-reps" type="number" min="1" value="8" required /></div>
-        <div class="field"><label for="load-${index}">Kg</label><input id="load-${index}" name="exercise-${index}-load" type="number" min="0" step="0.5" value="0" required /></div>
-      </div>
-    </fieldset>`;
+  return `<fieldset class="exercise-entry"><legend>${escapeHtml(name)}</legend><div class="exercise-values"><div class="field"><label for="sets-${index}">Serie</label><input id="sets-${index}" name="sets-${index}" type="number" min="1" value="3" required /></div><div class="field"><label for="reps-${index}">Rip.</label><input id="reps-${index}" name="reps-${index}" type="number" min="1" value="8" required /></div><div class="field"><label for="load-${index}">Kg</label><input id="load-${index}" name="load-${index}" type="number" min="0" step="0.5" value="0" required /></div></div></fieldset>`;
 }
 
-function saveSession(event) {
+async function saveSession(event, plan) {
   event.preventDefault();
   const data = new FormData(event.currentTarget);
-  const plan = planStore.getAll().find((item) => item.id === data.get("planId"));
-  if (!plan) return;
   const exercises = plan.exercises.map((name, index) => {
-    const sets = Number(data.get(`exercise-${index}-sets`));
-    const reps = Number(data.get(`exercise-${index}-reps`));
-    const load = Number(data.get(`exercise-${index}-load`));
+    const sets = Number(data.get(`sets-${index}`));
+    const reps = Number(data.get(`reps-${index}`));
+    const load = Number(data.get(`load-${index}`));
     return { name, sets, reps, load, volume: sets * reps * load };
   });
-  workoutStore.add({
-    planId: plan.id,
-    name: plan.name,
-    date: new Date().toISOString(),
-    duration: Number(data.get("duration")),
-    exercises,
-    volume: exercises.reduce((sum, exercise) => sum + exercise.volume, 0),
-  });
-  showToast("Allenamento salvato");
-  window.location.hash = "history";
+  try {
+    await workoutStore.add({ planId: plan.id, name: plan.name, date: new Date().toISOString(), duration: Number(data.get("duration")), exercises, volume: exercises.reduce((sum, exercise) => sum + exercise.volume, 0) });
+    showToast("Allenamento salvato");
+    window.location.hash = "history";
+  } catch (error) { showToast(error.message, true); }
 }
 
-function renderHistory() {
-  const workouts = getWorkouts();
+async function renderHistory() {
+  const workouts = await getWorkouts();
   const types = [...new Map(workouts.map((workout) => [workout.planId || workout.name, workout.name])).entries()];
-  app.innerHTML = `
-    <section class="page-header"><div><p class="eyebrow">Storico</p><h1>Ogni sessione conta.</h1></div></section>
-    <div class="filters">
-      <div class="field"><label for="history-filter">Scheda</label><select id="history-filter"><option value="all">Tutte</option>${types.map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join("")}</select></div>
-      <div class="field"><label for="history-month">Mese</label><input id="history-month" type="month" /></div>
-    </div>
-    <div class="workout-list" id="history-list"></div>`;
-
+  app.innerHTML = `<section class="page-header"><div><p class="eyebrow">Storico</p><h1>Ogni sessione conta.</h1></div></section><div class="filters"><div class="field"><label for="history-filter">Scheda</label><select id="history-filter"><option value="all">Tutte</option>${types.map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join("")}</select></div><div class="field"><label for="history-month">Mese</label><input id="history-month" type="month" /></div></div><div class="workout-list" id="history-list"></div>`;
   const updateList = () => {
     const type = document.querySelector("#history-filter").value;
     const month = document.querySelector("#history-month").value;
-    const filtered = workouts.filter((workout) =>
-      (type === "all" || (workout.planId || workout.name) === type) && (!month || workout.date.startsWith(month)),
-    );
-    document.querySelector("#history-list").innerHTML = filtered.length
-      ? filtered.map((workout) => workoutCard(workout, true)).join("")
-      : '<div class="empty-state">Nessun allenamento per questi filtri.</div>';
-    document.querySelectorAll("[data-remove-workout]").forEach((button) => {
-      button.addEventListener("click", () => {
-        workoutStore.remove(button.dataset.removeWorkout);
-        showToast("Allenamento eliminato");
-        renderHistory();
-      });
-    });
+    const filtered = workouts.filter((workout) => (type === "all" || (workout.planId || workout.name) === type) && (!month || workout.date.startsWith(month)));
+    document.querySelector("#history-list").innerHTML = filtered.length ? filtered.map((workout) => workoutCard(workout, true)).join("") : '<div class="empty-state">Nessun allenamento per questi filtri.</div>';
+    document.querySelectorAll("[data-remove-workout]").forEach((button) => button.addEventListener("click", async () => {
+      try { await workoutStore.remove(button.dataset.removeWorkout); showToast("Allenamento eliminato"); await renderHistory(); } catch (error) { showToast(error.message, true); }
+    }));
   };
   document.querySelector("#history-filter").addEventListener("change", updateList);
   document.querySelector("#history-month").addEventListener("change", updateList);
@@ -248,90 +284,43 @@ function getExerciseNames(workouts) {
 }
 
 function getExercisePoints(workouts, exerciseName, metric) {
-  return [...workouts]
-    .reverse()
-    .flatMap((workout) => {
-      const exercise = workout.exercises?.find((item) => item.name === exerciseName);
-      return exercise ? [{ date: workout.date, value: exercise[metric] }] : [];
-    });
+  return [...workouts].reverse().flatMap((workout) => {
+    const exercise = workout.exercises?.find((item) => item.name === exerciseName);
+    return exercise ? [{ date: workout.date, value: exercise[metric] }] : [];
+  });
 }
 
 function lineChart(points, metric, options = {}) {
   if (!points.length) return `<div class="empty-state">${options.emptyMessage || "Nessun dato disponibile."}</div>`;
-  const width = 620;
-  const height = 260;
+  const width = 620, height = 260;
   const padding = { top: 25, right: 20, bottom: 45, left: 55 };
-  const chartWidth = width - padding.left - padding.right;
-  const chartHeight = height - padding.top - padding.bottom;
-  const values = points.map((point) => point.value);
-  const dataMax = Math.max(...values);
-  const dataMin = Math.min(...values);
+  const chartWidth = width - padding.left - padding.right, chartHeight = height - padding.top - padding.bottom;
+  const values = points.map((point) => point.value), dataMax = Math.max(...values), dataMin = Math.min(...values);
   const min = options.adaptiveScale ? Math.max(0, Math.floor(dataMin - 2)) : 0;
-  const max = options.adaptiveScale ? Math.ceil(dataMax + 2) : Math.max(dataMax, 1);
-  const range = Math.max(max - min, 1);
+  const max = options.adaptiveScale ? Math.ceil(dataMax + 2) : Math.max(dataMax, 1), range = Math.max(max - min, 1);
   const x = (index) => padding.left + (points.length === 1 ? chartWidth / 2 : (index / (points.length - 1)) * chartWidth);
   const y = (value) => padding.top + chartHeight - ((value - min) / range) * chartHeight;
   const coordinates = points.map((point, index) => `${x(index)},${y(point.value)}`).join(" ");
   const unit = metric === "volume" ? "kg vol." : "kg";
-  return `
-    <div class="xy-chart-wrap">
-      <svg class="xy-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Andamento ${unit}">
-        <line class="axis" x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${padding.top + chartHeight}" />
-        <line class="axis" x1="${padding.left}" y1="${padding.top + chartHeight}" x2="${width - padding.right}" y2="${padding.top + chartHeight}" />
-        ${[0, 0.5, 1].map((ratio) => { const value = min + range * ratio; return `<g><line class="grid-line" x1="${padding.left}" y1="${y(value)}" x2="${width - padding.right}" y2="${y(value)}" /><text class="axis-label" x="${padding.left - 10}" y="${y(value) + 4}" text-anchor="end">${formatNumber(value)}</text></g>`; }).join("")}
-        <polyline class="progress-line" points="${coordinates}" />
-        ${points.map((point, index) => `<g><circle class="progress-point" cx="${x(index)}" cy="${y(point.value)}" r="5" /><text class="point-value" x="${x(index)}" y="${y(point.value) - 11}" text-anchor="middle">${formatNumber(point.value)}</text><text class="axis-label" x="${x(index)}" y="${height - 17}" text-anchor="middle">${formatDate(point.date, { day: "2-digit", month: "2-digit" })}</text></g>`).join("")}
-      </svg>
-    </div>`;
+  return `<div class="xy-chart-wrap"><svg class="xy-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Andamento ${unit}"><line class="axis" x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${padding.top + chartHeight}" /><line class="axis" x1="${padding.left}" y1="${padding.top + chartHeight}" x2="${width - padding.right}" y2="${padding.top + chartHeight}" />${[0, 0.5, 1].map((ratio) => { const value = min + range * ratio; return `<g><line class="grid-line" x1="${padding.left}" y1="${y(value)}" x2="${width - padding.right}" y2="${y(value)}" /><text class="axis-label" x="${padding.left - 10}" y="${y(value) + 4}" text-anchor="end">${formatNumber(value)}</text></g>`; }).join("")}<polyline class="progress-line" points="${coordinates}" />${points.map((point, index) => `<g><circle class="progress-point" cx="${x(index)}" cy="${y(point.value)}" r="5" /><text class="point-value" x="${x(index)}" y="${y(point.value) - 11}" text-anchor="middle">${formatNumber(point.value)}</text><text class="axis-label" x="${x(index)}" y="${height - 17}" text-anchor="middle">${formatDate(point.date, { day: "2-digit", month: "2-digit" })}</text></g>`).join("")}</svg></div>`;
 }
 
-function renderProgress() {
-  const workouts = getWorkouts();
-  const bodyWeights = getBodyWeights();
+async function renderProgress() {
+  const [workouts, bodyWeights] = await Promise.all([getWorkouts(), getBodyWeights()]);
   const exerciseNames = getExerciseNames(workouts);
-  app.innerHTML = `
-    <section class="page-header"><div><p class="eyebrow">Progressi</p><h1>Un esercizio alla volta.</h1></div></section>
-    <section class="card body-weight-card">
-      <div class="weight-heading"><div><p class="eyebrow">Peso corporeo</p><h2>Registra la misurazione</h2></div>${bodyWeights[0] ? `<strong>${formatNumber(bodyWeights[0].weight)} kg</strong>` : ""}</div>
-      <form id="body-weight-form" class="weight-form">
-        <div class="field"><label for="weight-date">Data</label><input id="weight-date" name="date" type="date" max="${localDateKey()}" value="${localDateKey()}" required /></div>
-        <div class="field"><label for="body-weight">Peso (kg)</label><input id="body-weight" name="weight" type="number" min="20" max="400" step="0.1" placeholder="75,5" required /></div>
-        <button class="button" type="submit">Salva peso</button>
-      </form>
-      <div id="body-weight-chart">${lineChart([...bodyWeights].reverse().map((entry) => ({ date: `${entry.date}T12:00:00`, value: entry.weight })), "bodyWeight", { adaptiveScale: true, emptyMessage: "Registra il primo peso per creare il grafico." })}</div>
-    </section>
-    <div class="section-heading"><h2>Progressi esercizi</h2></div>
-    <p class="muted">Scegli un esercizio e confronta carico o volume nel tempo.</p>
-    ${exerciseNames.length ? `
-      <div class="filters">
-        <div class="field"><label for="exercise-filter">Esercizio</label><select id="exercise-filter">${exerciseNames.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")}</select></div>
-        <div class="field"><label for="metric-filter">Metrica</label><select id="metric-filter"><option value="load">Carico (kg)</option><option value="volume">Volume</option></select></div>
-      </div>
-      <section class="card chart-card"><div id="exercise-chart"></div></section>
-      <section class="stats-grid" id="exercise-stats"></section>` : '<div class="empty-state">Registra almeno un allenamento per vedere i grafici dei tuoi esercizi.</div>'}`;
-
-  document.querySelector("#body-weight-form").addEventListener("submit", (event) => {
+  app.innerHTML = `<section class="page-header"><div><p class="eyebrow">Progressi</p><h1>Un esercizio alla volta.</h1></div></section><section class="card body-weight-card"><div class="weight-heading"><div><p class="eyebrow">Peso corporeo</p><h2>Registra la misurazione</h2></div>${bodyWeights[0] ? `<strong>${formatNumber(bodyWeights[0].weight)} kg</strong>` : ""}</div><form id="body-weight-form" class="weight-form"><div class="field"><label for="weight-date">Data</label><input id="weight-date" name="date" type="date" max="${localDateKey()}" value="${localDateKey()}" required /></div><div class="field"><label for="body-weight">Peso (kg)</label><input id="body-weight" name="weight" type="number" min="20" max="400" step="0.1" required /></div><button class="button" type="submit">Salva peso</button></form><div>${lineChart([...bodyWeights].reverse().map((entry) => ({ date: `${entry.date}T12:00:00`, value: entry.weight })), "bodyWeight", { adaptiveScale: true, emptyMessage: "Registra il primo peso per creare il grafico." })}</div></section><div class="section-heading"><h2>Progressi esercizi</h2></div><p class="muted">Scegli un esercizio e confronta carico o volume nel tempo.</p>${exerciseNames.length ? `<div class="filters"><div class="field"><label for="exercise-filter">Esercizio</label><select id="exercise-filter">${exerciseNames.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")}</select></div><div class="field"><label for="metric-filter">Metrica</label><select id="metric-filter"><option value="load">Carico (kg)</option><option value="volume">Volume</option></select></div></div><section class="card chart-card"><div id="exercise-chart"></div></section><section class="stats-grid" id="exercise-stats"></section>` : '<div class="empty-state">Registra almeno un allenamento per vedere i grafici.</div>'}`;
+  document.querySelector("#body-weight-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    bodyWeightStore.upsertByDate({ date: String(data.get("date")), weight: Number(data.get("weight")) });
-    showToast("Peso registrato");
-    renderProgress();
+    try { await bodyWeightStore.upsertByDate({ date: String(data.get("date")), weight: Number(data.get("weight")) }); showToast("Peso registrato"); await renderProgress(); } catch (error) { showToast(error.message, true); }
   });
-
   if (!exerciseNames.length) return;
   const updateChart = () => {
-    const exerciseName = document.querySelector("#exercise-filter").value;
-    const metric = document.querySelector("#metric-filter").value;
-    const points = getExercisePoints(workouts, exerciseName, metric);
-    const values = points.map((point) => point.value);
-    const latest = values.at(-1) || 0;
-    const best = Math.max(...values, 0);
-    const change = values.length > 1 ? latest - values[0] : 0;
+    const exerciseName = document.querySelector("#exercise-filter").value, metric = document.querySelector("#metric-filter").value;
+    const points = getExercisePoints(workouts, exerciseName, metric), values = points.map((point) => point.value);
+    const latest = values.at(-1) || 0, best = Math.max(...values, 0), change = values.length > 1 ? latest - values[0] : 0;
     document.querySelector("#exercise-chart").innerHTML = `<h2>${escapeHtml(exerciseName)}</h2>${lineChart(points, metric)}`;
-    document.querySelector("#exercise-stats").innerHTML = `
-      <article class="stat-card"><strong>${formatNumber(latest)}</strong><span>Ultimo valore</span></article>
-      <article class="stat-card"><strong>${formatNumber(best)}</strong><span>Record</span></article>
-      <article class="stat-card"><strong>${change >= 0 ? "+" : ""}${formatNumber(change)}</strong><span>Variazione</span></article>`;
+    document.querySelector("#exercise-stats").innerHTML = `<article class="stat-card"><strong>${formatNumber(latest)}</strong><span>Ultimo valore</span></article><article class="stat-card"><strong>${formatNumber(best)}</strong><span>Record</span></article><article class="stat-card"><strong>${change >= 0 ? "+" : ""}${formatNumber(change)}</strong><span>Variazione</span></article>`;
   };
   document.querySelector("#exercise-filter").addEventListener("change", updateChart);
   document.querySelector("#metric-filter").addEventListener("change", updateChart);
@@ -340,32 +329,48 @@ function renderProgress() {
 
 const routes = { home: renderHome, workouts: renderWorkouts, history: renderHistory, progress: renderProgress };
 
-function router() {
+async function router() {
+  if (isSupabaseConfigured && !currentUser) return renderAuth();
+  showLoading();
   const route = window.location.hash.slice(1) || "home";
-  (routes[route] || routes.home)();
-  document.querySelectorAll("[data-route]").forEach((link) => {
-    const active = link.dataset.route === (routes[route] ? route : "home");
-    link.classList.toggle("active", active);
-    link.toggleAttribute("aria-current", active);
-  });
-  window.scrollTo(0, 0);
-  app.focus({ preventScroll: true });
+  try {
+    await (routes[route] || routes.home)();
+    document.querySelectorAll("[data-route]").forEach((link) => {
+      const active = link.dataset.route === (routes[route] ? route : "home");
+      link.classList.toggle("active", active);
+      link.toggleAttribute("aria-current", active);
+    });
+    window.scrollTo(0, 0);
+    app.focus({ preventScroll: true });
+  } catch (error) { showDataError(error); }
 }
 
-window.addEventListener("hashchange", router);
-window.addEventListener("DOMContentLoaded", router);
-window.addEventListener("beforeinstallprompt", (event) => {
-  event.preventDefault();
-  deferredInstallPrompt = event;
-  installButton.hidden = false;
-});
-installButton.addEventListener("click", async () => {
-  if (!deferredInstallPrompt) return;
-  deferredInstallPrompt.prompt();
-  await deferredInstallPrompt.userChoice;
-  deferredInstallPrompt = undefined;
-  installButton.hidden = true;
-});
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => console.warn("Service worker non registrato.")));
+async function initialize() {
+  if (supabaseInitializationError) {
+    setAuthenticatedLayout(false);
+    showDataError(new Error("Impossibile caricare il client Supabase. Controlla la connessione e riprova."));
+    return;
+  }
+  if (!isSupabaseConfigured) {
+    const savedName = localStorage.getItem("gymboard-display-name");
+    if (savedName) { currentUser = { user_metadata: { display_name: savedName } }; await showApp(); }
+    else renderAuth();
+    return;
+  }
+  showLoading();
+  const { data, error } = await supabase.auth.getSession();
+  if (error) return renderAuth(error.message);
+  currentUser = data.session?.user || null;
+  if (currentUser) await showApp(); else renderAuth();
 }
+
+logoutButton.addEventListener("click", async () => {
+  if (isSupabaseConfigured) await supabase.auth.signOut();
+  currentUser = null;
+  renderAuth();
+});
+window.addEventListener("hashchange", router);
+window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; installButton.hidden = false; });
+installButton.addEventListener("click", async () => { if (!deferredInstallPrompt) return; deferredInstallPrompt.prompt(); await deferredInstallPrompt.userChoice; deferredInstallPrompt = undefined; installButton.hidden = true; });
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => console.warn("Service worker non registrato.")));
+initialize();

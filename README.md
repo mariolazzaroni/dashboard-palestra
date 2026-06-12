@@ -1,6 +1,6 @@
 # GymBoard
 
-**Current Version: v0.1**
+**Current Version: v1.0**
 
 GymBoard e una Progressive Web App mobile-first per creare schede personalizzate, registrare gli allenamenti e monitorare i progressi in palestra. E realizzata con HTML, CSS e JavaScript vanilla, pubblicabile su GitHub Pages e collegata a Supabase per autenticazione e sincronizzazione cloud.
 
@@ -8,11 +8,15 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 
 - Home con riepilogo settimanale e ultime sessioni
 - Creazione di schede personalizzate, come Lista A e Lista B
+- Catalogo esercizi condiviso con identità stabile
+- Suggerimenti automatici durante creazione e modifica delle schede
+- Riconoscimento di nomi equivalenti per evitare esercizi duplicati
 - Esercizi scelti dall'utente con serie, ripetizioni e carico
+- Modifica e archiviazione non distruttiva delle schede
 - Calcolo automatico del volume per esercizio e per allenamento
 - Storico filtrabile per tipo e mese
 - Eliminazione delle sessioni registrate
-- Grafico XY per carico e volume di ogni singolo esercizio
+- Grafico XY aggregato per esercizio, indipendentemente dalla scheda utilizzata
 - Registrazione giornaliera e grafico del peso corporeo
 - Promemoria in Home quando manca la misurazione di oggi
 - Login e registrazione con nome, email e password
@@ -25,13 +29,23 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 ## Roadmap
 
 - Migliorare la gestione di serie ed esercizi durante l'allenamento
-- Aggiungere modifica e riordinamento delle schede
+- Aggiungere il riordinamento drag-and-drop degli esercizi
 - Introdurre obiettivi personali e statistiche avanzate
 - Migliorare la sincronizzazione e l'esperienza offline
 - Aggiungere recupero password e gestione del profilo
-- Preparare la versione v1.0
+- Aggiungere esportazione e importazione dei dati
 
 ## Changelog
+
+### v1.0 - Storico esercizi unificato
+
+- Catalogo esercizi con identificativi stabili
+- Storico aggregato indipendentemente dalla scheda
+- Suggerimenti automatici e riconoscimento dei duplicati
+- Creazione automatica dei nuovi esercizi
+- Modifica delle schede esistenti
+- Archiviazione non distruttiva delle schede
+- Migrazione Supabase dei dati v0.1
 
 ### v0.1 - Prima versione funzionante
 
@@ -86,7 +100,8 @@ Tutti i percorsi sono relativi, quindi l'app funziona anche all'indirizzo `https
 ├── js/supabase-client.js # Client Supabase caricato via CDN
 ├── index.html           # Shell dell'app
 ├── manifest.webmanifest # Metadati di installazione
-├── supabase-schema.sql  # Tabelle e regole di sicurezza Supabase
+├── supabase-schema.sql  # Schema completo per nuove installazioni
+├── supabase-migration-v1.0.sql # Migrazione dei progetti v0.1
 └── sw.js                # Cache e funzionamento offline
 ```
 
@@ -94,13 +109,25 @@ Tutti i percorsi sono relativi, quindi l'app funziona anche all'indirizzo `https
 
 Supabase è configurato e attivo. `js/config.js` contiene esclusivamente Project URL e Publishable key, entrambe utilizzabili nel browser quando le tabelle sono protette da Row Level Security. Non sono presenti Secret key, `service_role` o connection string.
 
-Prima di usare la dashboard:
+Per una nuova installazione:
 
 1. Apri il progetto Supabase e vai in **SQL Editor**.
 2. Esegui l'intero file `supabase-schema.sql` per creare tabelle, indici e policy RLS.
 3. Verifica in **Authentication > Providers** che Email sia abilitato.
 4. In **Authentication > URL Configuration**, aggiungi l'URL GitHub Pages tra i Redirect URLs.
 5. Apri GymBoard, inserisci nome, email e password, quindi scegli **Crea account**.
+
+### Aggiornamento da v0.1 a v1.0
+
+Prima di pubblicare il codice v1.0 su GitHub Pages:
+
+1. Esegui un backup del database Supabase.
+2. Apri **SQL Editor** nel progetto già utilizzato dalla v0.1.
+3. Esegui una sola volta `supabase-migration-v1.0.sql`.
+4. Verifica che la tabella `exercises` sia stata popolata.
+5. Pubblica i file della dashboard v1.0.
+
+La migrazione crea un esercizio unico per utente e nome normalizzato, collega le vecchie righe di `plan_exercises` e `exercise_results`, aggiunge `archived_at` alle schede e conserva tutti gli allenamenti precedenti.
 
 Se la conferma email è abilitata, il primo accesso richiede il link ricevuto via email. Nei login successivi il nome inserito aggiorna i metadata del profilo e viene mostrato nella Home.
 
@@ -110,10 +137,11 @@ Con **Ricordami** selezionato, Supabase conserva la sessione in `localStorage` e
 
 Il modello dati e composto da:
 
+- `exercises`: catalogo personale con nome normalizzato e ID stabile
 - `plans`: Lista A, Lista B e altre schede
-- `plan_exercises`: esercizi contenuti nelle schede
+- `plan_exercises`: riferimenti tra schede ed esercizi
 - `workouts`: sessioni completate
-- `exercise_results`: serie, ripetizioni, carico e volume per esercizio
+- `exercise_results`: serie, ripetizioni, carico e volume collegati all'ID esercizio
 - `body_weights`: misurazioni giornaliere del peso corporeo
 
 Quando Supabase è configurato, i dati vengono letti e scritti solo online. Il fallback locale viene selezionato esclusivamente lasciando vuoti URL o publishable key in `js/config.js`.

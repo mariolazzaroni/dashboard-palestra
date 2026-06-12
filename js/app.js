@@ -1,4 +1,4 @@
-import { bodyWeightStore, planStore, workoutStore } from "./data-store.js";
+import { bodyWeightStore, exerciseStore, findExerciseMatches, normalizeExerciseName, planStore, workoutStore } from "./data-store.js";
 import { isRememberSessionEnabled, setRememberSession } from "./auth-storage.js";
 import { isSupabaseConfigured, supabase, supabaseInitializationError } from "./supabase-client.js";
 
@@ -204,31 +204,97 @@ async function renderHome() {
 }
 
 function planCard(plan) {
-  return `<article class="card template-card"><div><h3>${escapeHtml(plan.name)}</h3><p class="workout-meta">${plan.exercises.length} esercizi</p><div class="exercise-tags">${plan.exercises.map((name) => `<span class="tag">${escapeHtml(name)}</span>`).join("")}</div></div><div class="card-actions"><button class="button" data-start-plan="${plan.id}">Avvia</button><button class="button danger" data-remove-plan="${plan.id}" aria-label="Elimina scheda">×</button></div></article>`;
+  return `<article class="card template-card ${plan.archivedAt ? "archived-card" : ""}"><div><div class="plan-title"><h3>${escapeHtml(plan.name)}</h3>${plan.archivedAt ? '<span class="status-badge">Archiviata</span>' : ""}</div><p class="workout-meta">${plan.exercises.length} esercizi</p><div class="exercise-tags">${plan.exercises.map((exercise) => `<span class="tag">${escapeHtml(exercise.name)}</span>`).join("")}</div></div>${plan.archivedAt ? "" : `<div class="card-actions"><button class="button" data-start-plan="${plan.id}">Avvia</button><button class="button secondary" data-edit-plan="${plan.id}">Modifica</button><button class="button secondary" data-archive-plan="${plan.id}">Archivia</button></div>`}</article>`;
 }
 
 async function renderWorkouts() {
-  const plans = await planStore.getAll();
+  const [plans, exerciseCatalog] = await Promise.all([planStore.getAll(), exerciseStore.getAll()]);
+  const activePlans = plans.filter((plan) => !plan.archivedAt);
+  const archivedPlans = plans.filter((plan) => plan.archivedAt);
   app.innerHTML = `
     <section class="page-header"><div><p class="eyebrow">Allenamenti</p><h1>Le tue schede.</h1></div></section>
-    <section class="card plan-creator"><h2>Crea una scheda</h2><form id="plan-form" class="stack-form"><div class="field"><label for="plan-name">Nome</label><input id="plan-name" name="name" maxlength="50" placeholder="Lista A" required /></div><div class="field"><label for="plan-exercises">Esercizi, uno per riga</label><textarea id="plan-exercises" name="exercises" rows="5" maxlength="800" placeholder="Panca piana&#10;Rematore&#10;Squat" required></textarea></div><button class="button" type="submit">Salva scheda</button></form></section>
-    <div class="section-heading"><h2>Schede salvate</h2></div><section class="template-grid">${plans.length ? plans.map(planCard).join("") : '<div class="empty-state">Nessuna scheda. Crea la tua Lista A qui sopra.</div>'}</section><section class="card session-card" id="session-card" hidden></section>`;
+    <section class="card plan-creator"><h2 id="plan-form-title">Crea una scheda</h2><form id="plan-form" class="stack-form"><input type="hidden" id="plan-id" name="planId" /><div class="field"><label for="plan-name">Nome</label><input id="plan-name" name="name" maxlength="50" placeholder="Lista A" required /></div><div><label class="field-label">Esercizi</label><div class="exercise-builder" id="exercise-builder"></div><button class="text-button" id="add-exercise-row" type="button">+ Aggiungi esercizio</button></div><div class="form-actions"><button class="button" type="submit">Salva scheda</button><button class="button secondary" id="cancel-plan-edit" type="button" hidden>Annulla</button></div></form></section>
+    <div class="section-heading"><h2>Schede attive</h2></div><section class="template-grid">${activePlans.length ? activePlans.map(planCard).join("") : '<div class="empty-state">Nessuna scheda attiva. Crea la tua Lista A qui sopra.</div>'}</section>
+    ${archivedPlans.length ? `<div class="section-heading"><h2>Schede archiviate</h2></div><section class="template-grid archived-grid">${archivedPlans.map(planCard).join("")}</section>` : ""}<section class="card session-card" id="session-card" hidden></section>`;
+
+  const builder = document.querySelector("#exercise-builder");
+  const addRow = (exercise = null) => {
+    const row = document.createElement("div");
+    row.className = "exercise-builder-row";
+    row.dataset.exerciseId = exercise?.id || "";
+    row.innerHTML = `<div class="field exercise-name-field"><label>Nome esercizio</label><input class="exercise-name-input" type="text" maxlength="100" autocomplete="off" value="${escapeHtml(exercise?.name || "")}" placeholder="Es. Panca piana" required /><div class="exercise-suggestions" hidden></div></div><button class="button danger remove-exercise-row" type="button" aria-label="Rimuovi esercizio">×</button>`;
+    builder.append(row);
+    bindExerciseSuggestions(row, exerciseCatalog);
+  };
+  addRow();
+  document.querySelector("#add-exercise-row").addEventListener("click", () => addRow());
+  document.querySelector("#cancel-plan-edit").addEventListener("click", () => resetPlanForm(addRow));
 
   document.querySelector("#plan-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const exercises = String(data.get("exercises")).split(/\n|,/).map((name) => name.trim()).filter(Boolean);
-    if (!exercises.length) return showToast("Aggiungi almeno un esercizio", true);
+    const rows = [...builder.querySelectorAll(".exercise-builder-row")];
+    const selectedExercises = [];
     try {
-      await planStore.add({ name: String(data.get("name")).trim(), exercises });
-      showToast("Scheda creata");
+      for (const row of rows) {
+        const name = row.querySelector("input").value.trim();
+        if (!name) continue;
+        let exercise = exerciseCatalog.find((item) => item.id === row.dataset.exerciseId);
+        if (!exercise) [exercise] = await exerciseStore.resolveNames([name]);
+        if (!selectedExercises.some((item) => item.id === exercise.id)) selectedExercises.push(exercise);
+      }
+      if (!selectedExercises.length) return showToast("Aggiungi almeno un esercizio", true);
+      const changes = { name: String(data.get("name")).trim(), exerciseIds: selectedExercises.map((exercise) => exercise.id) };
+      if (data.get("planId")) await planStore.update(String(data.get("planId")), changes);
+      else await planStore.add(changes);
+      showToast(data.get("planId") ? "Scheda aggiornata" : "Scheda creata");
       await renderWorkouts();
     } catch (error) { showToast(error.message, true); }
   });
   document.querySelectorAll("[data-start-plan]").forEach((button) => button.addEventListener("click", () => openSession(button.dataset.startPlan, plans)));
-  document.querySelectorAll("[data-remove-plan]").forEach((button) => button.addEventListener("click", async () => {
-    try { await planStore.remove(button.dataset.removePlan); showToast("Scheda eliminata"); await renderWorkouts(); } catch (error) { showToast(error.message, true); }
+  document.querySelectorAll("[data-edit-plan]").forEach((button) => button.addEventListener("click", () => {
+    const plan = plans.find((item) => item.id === button.dataset.editPlan);
+    document.querySelector("#plan-id").value = plan.id;
+    document.querySelector("#plan-name").value = plan.name;
+    document.querySelector("#plan-form-title").textContent = "Modifica scheda";
+    document.querySelector("#cancel-plan-edit").hidden = false;
+    builder.innerHTML = "";
+    plan.exercises.forEach(addRow);
+    document.querySelector(".plan-creator").scrollIntoView({ behavior: "smooth" });
   }));
+  document.querySelectorAll("[data-archive-plan]").forEach((button) => button.addEventListener("click", async () => {
+    try { await planStore.archive(button.dataset.archivePlan); showToast("Scheda archiviata"); await renderWorkouts(); } catch (error) { showToast(error.message, true); }
+  }));
+}
+
+function bindExerciseSuggestions(row, catalog) {
+  const input = row.querySelector(".exercise-name-input");
+  const suggestions = row.querySelector(".exercise-suggestions");
+  input.addEventListener("input", () => {
+    const selected = catalog.find((exercise) => exercise.id === row.dataset.exerciseId);
+    if (!selected || normalizeExerciseName(selected.name) !== normalizeExerciseName(input.value)) row.dataset.exerciseId = "";
+    const matches = findExerciseMatches(catalog, input.value);
+    suggestions.innerHTML = matches.map((exercise) => `<button type="button" data-suggestion-id="${exercise.id}"><strong>${escapeHtml(exercise.name)}</strong><span>Usa lo storico esistente</span></button>`).join("");
+    suggestions.hidden = !matches.length;
+  });
+  suggestions.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-suggestion-id]");
+    if (!button) return;
+    const exercise = catalog.find((item) => item.id === button.dataset.suggestionId);
+    row.dataset.exerciseId = exercise.id;
+    input.value = exercise.name;
+    suggestions.hidden = true;
+  });
+  row.querySelector(".remove-exercise-row").addEventListener("click", () => row.remove());
+}
+
+function resetPlanForm(addRow) {
+  document.querySelector("#plan-form").reset();
+  document.querySelector("#plan-id").value = "";
+  document.querySelector("#plan-form-title").textContent = "Crea una scheda";
+  document.querySelector("#cancel-plan-edit").hidden = true;
+  document.querySelector("#exercise-builder").innerHTML = "";
+  addRow();
 }
 
 function openSession(planId, plans) {
@@ -236,23 +302,23 @@ function openSession(planId, plans) {
   if (!plan) return;
   const sessionCard = document.querySelector("#session-card");
   sessionCard.hidden = false;
-  sessionCard.innerHTML = `<h2>${escapeHtml(plan.name)}</h2><p class="muted">Inserisci i dati svolti. Il volume è serie × ripetizioni × carico.</p><form id="session-form" class="stack-form"><input type="hidden" name="planId" value="${plan.id}" /><div class="field"><label for="duration">Durata (min)</label><input id="duration" name="duration" type="number" min="1" value="60" required /></div><div class="exercise-entry-list">${plan.exercises.map((name, index) => exerciseEntry(name, index)).join("")}</div><button class="button" type="submit">Salva allenamento</button></form>`;
+  sessionCard.innerHTML = `<h2>${escapeHtml(plan.name)}</h2><p class="muted">Inserisci i dati svolti. Il volume è serie × ripetizioni × carico.</p><form id="session-form" class="stack-form"><input type="hidden" name="planId" value="${plan.id}" /><div class="field"><label for="duration">Durata (min)</label><input id="duration" name="duration" type="number" min="1" value="60" required /></div><div class="exercise-entry-list">${plan.exercises.map((exercise, index) => exerciseEntry(exercise, index)).join("")}</div><button class="button" type="submit">Salva allenamento</button></form>`;
   sessionCard.scrollIntoView({ behavior: "smooth", block: "start" });
   document.querySelector("#session-form").addEventListener("submit", (event) => saveSession(event, plan));
 }
 
-function exerciseEntry(name, index) {
-  return `<fieldset class="exercise-entry"><legend>${escapeHtml(name)}</legend><div class="exercise-values"><div class="field"><label for="sets-${index}">Serie</label><input id="sets-${index}" name="sets-${index}" type="number" min="1" value="3" required /></div><div class="field"><label for="reps-${index}">Rip.</label><input id="reps-${index}" name="reps-${index}" type="number" min="1" value="8" required /></div><div class="field"><label for="load-${index}">Kg</label><input id="load-${index}" name="load-${index}" type="number" min="0" step="0.5" value="0" required /></div></div></fieldset>`;
+function exerciseEntry(exercise, index) {
+  return `<fieldset class="exercise-entry"><legend>${escapeHtml(exercise.name)}</legend><input type="hidden" name="exercise-id-${index}" value="${exercise.id}" /><div class="exercise-values"><div class="field"><label for="sets-${index}">Serie</label><input id="sets-${index}" name="sets-${index}" type="number" min="1" value="3" required /></div><div class="field"><label for="reps-${index}">Rip.</label><input id="reps-${index}" name="reps-${index}" type="number" min="1" value="8" required /></div><div class="field"><label for="load-${index}">Kg</label><input id="load-${index}" name="load-${index}" type="number" min="0" step="0.5" value="0" required /></div></div></fieldset>`;
 }
 
 async function saveSession(event, plan) {
   event.preventDefault();
   const data = new FormData(event.currentTarget);
-  const exercises = plan.exercises.map((name, index) => {
+  const exercises = plan.exercises.map((exercise, index) => {
     const sets = Number(data.get(`sets-${index}`));
     const reps = Number(data.get(`reps-${index}`));
     const load = Number(data.get(`load-${index}`));
-    return { name, sets, reps, load, volume: sets * reps * load };
+    return { exerciseId: exercise.id, name: exercise.name, sets, reps, load, volume: sets * reps * load };
   });
   try {
     await workoutStore.add({ planId: plan.id, name: plan.name, date: new Date().toISOString(), duration: Number(data.get("duration")), exercises, volume: exercises.reduce((sum, exercise) => sum + exercise.volume, 0) });
@@ -279,13 +345,20 @@ async function renderHistory() {
   updateList();
 }
 
-function getExerciseNames(workouts) {
-  return [...new Set(workouts.flatMap((workout) => workout.exercises?.map((exercise) => exercise.name) || []))].sort();
+function getTrackedExercises(workouts) {
+  const exercises = new Map();
+  workouts.forEach((workout) => {
+    workout.exercises?.forEach((exercise) => {
+      const key = exercise.exerciseId || normalizeExerciseName(exercise.name);
+      if (!exercises.has(key)) exercises.set(key, { id: key, name: exercise.name });
+    });
+  });
+  return [...exercises.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function getExercisePoints(workouts, exerciseName, metric) {
+function getExercisePoints(workouts, exerciseId, metric) {
   return [...workouts].reverse().flatMap((workout) => {
-    const exercise = workout.exercises?.find((item) => item.name === exerciseName);
+    const exercise = workout.exercises?.find((item) => (item.exerciseId || normalizeExerciseName(item.name)) === exerciseId);
     return exercise ? [{ date: workout.date, value: exercise[metric] }] : [];
   });
 }
@@ -307,19 +380,20 @@ function lineChart(points, metric, options = {}) {
 
 async function renderProgress() {
   const [workouts, bodyWeights] = await Promise.all([getWorkouts(), getBodyWeights()]);
-  const exerciseNames = getExerciseNames(workouts);
-  app.innerHTML = `<section class="page-header"><div><p class="eyebrow">Progressi</p><h1>Un esercizio alla volta.</h1></div></section><section class="card body-weight-card"><div class="weight-heading"><div><p class="eyebrow">Peso corporeo</p><h2>Registra la misurazione</h2></div>${bodyWeights[0] ? `<strong>${formatNumber(bodyWeights[0].weight)} kg</strong>` : ""}</div><form id="body-weight-form" class="weight-form"><div class="field"><label for="weight-date">Data</label><input id="weight-date" name="date" type="date" max="${localDateKey()}" value="${localDateKey()}" required /></div><div class="field"><label for="body-weight">Peso (kg)</label><input id="body-weight" name="weight" type="number" min="20" max="400" step="0.1" required /></div><button class="button" type="submit">Salva peso</button></form><div>${lineChart([...bodyWeights].reverse().map((entry) => ({ date: `${entry.date}T12:00:00`, value: entry.weight })), "bodyWeight", { adaptiveScale: true, emptyMessage: "Registra il primo peso per creare il grafico." })}</div></section><div class="section-heading"><h2>Progressi esercizi</h2></div><p class="muted">Scegli un esercizio e confronta carico o volume nel tempo.</p>${exerciseNames.length ? `<div class="filters"><div class="field"><label for="exercise-filter">Esercizio</label><select id="exercise-filter">${exerciseNames.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")}</select></div><div class="field"><label for="metric-filter">Metrica</label><select id="metric-filter"><option value="load">Carico (kg)</option><option value="volume">Volume</option></select></div></div><section class="card chart-card"><div id="exercise-chart"></div></section><section class="stats-grid" id="exercise-stats"></section>` : '<div class="empty-state">Registra almeno un allenamento per vedere i grafici.</div>'}`;
+  const trackedExercises = getTrackedExercises(workouts);
+  app.innerHTML = `<section class="page-header"><div><p class="eyebrow">Progressi</p><h1>Un esercizio alla volta.</h1></div></section><section class="card body-weight-card"><div class="weight-heading"><div><p class="eyebrow">Peso corporeo</p><h2>Registra la misurazione</h2></div>${bodyWeights[0] ? `<strong>${formatNumber(bodyWeights[0].weight)} kg</strong>` : ""}</div><form id="body-weight-form" class="weight-form"><div class="field"><label for="weight-date">Data</label><input id="weight-date" name="date" type="date" max="${localDateKey()}" value="${localDateKey()}" required /></div><div class="field"><label for="body-weight">Peso (kg)</label><input id="body-weight" name="weight" type="number" min="20" max="400" step="0.1" required /></div><button class="button" type="submit">Salva peso</button></form><div>${lineChart([...bodyWeights].reverse().map((entry) => ({ date: `${entry.date}T12:00:00`, value: entry.weight })), "bodyWeight", { adaptiveScale: true, emptyMessage: "Registra il primo peso per creare il grafico." })}</div></section><div class="section-heading"><h2>Progressi esercizi</h2></div><p class="muted">I dati dello stesso esercizio sono aggregati da tutte le schede, comprese quelle archiviate.</p>${trackedExercises.length ? `<div class="filters"><div class="field"><label for="exercise-filter">Esercizio</label><select id="exercise-filter">${trackedExercises.map((exercise) => `<option value="${escapeHtml(exercise.id)}">${escapeHtml(exercise.name)}</option>`).join("")}</select></div><div class="field"><label for="metric-filter">Metrica</label><select id="metric-filter"><option value="load">Carico (kg)</option><option value="volume">Volume</option></select></div></div><section class="card chart-card"><div id="exercise-chart"></div></section><section class="stats-grid" id="exercise-stats"></section>` : '<div class="empty-state">Registra almeno un allenamento per vedere i grafici.</div>'}`;
   document.querySelector("#body-weight-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     try { await bodyWeightStore.upsertByDate({ date: String(data.get("date")), weight: Number(data.get("weight")) }); showToast("Peso registrato"); await renderProgress(); } catch (error) { showToast(error.message, true); }
   });
-  if (!exerciseNames.length) return;
+  if (!trackedExercises.length) return;
   const updateChart = () => {
-    const exerciseName = document.querySelector("#exercise-filter").value, metric = document.querySelector("#metric-filter").value;
-    const points = getExercisePoints(workouts, exerciseName, metric), values = points.map((point) => point.value);
+    const exerciseId = document.querySelector("#exercise-filter").value, metric = document.querySelector("#metric-filter").value;
+    const exercise = trackedExercises.find((item) => item.id === exerciseId);
+    const points = getExercisePoints(workouts, exerciseId, metric), values = points.map((point) => point.value);
     const latest = values.at(-1) || 0, best = Math.max(...values, 0), change = values.length > 1 ? latest - values[0] : 0;
-    document.querySelector("#exercise-chart").innerHTML = `<h2>${escapeHtml(exerciseName)}</h2>${lineChart(points, metric)}`;
+    document.querySelector("#exercise-chart").innerHTML = `<h2>${escapeHtml(exercise.name)}</h2>${lineChart(points, metric)}`;
     document.querySelector("#exercise-stats").innerHTML = `<article class="stat-card"><strong>${formatNumber(latest)}</strong><span>Ultimo valore</span></article><article class="stat-card"><strong>${formatNumber(best)}</strong><span>Record</span></article><article class="stat-card"><strong>${change >= 0 ? "+" : ""}${formatNumber(change)}</strong><span>Variazione</span></article>`;
   };
   document.querySelector("#exercise-filter").addEventListener("change", updateChart);

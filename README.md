@@ -1,6 +1,8 @@
 # GymBoard
 
-GymBoard e una Progressive Web App mobile-first per registrare e monitorare gli allenamenti in palestra. E realizzata con HTML, CSS e JavaScript vanilla, funziona offline ed e pronta per essere pubblicata su GitHub Pages.
+**Current Version: v0.1**
+
+GymBoard e una Progressive Web App mobile-first per creare schede personalizzate, registrare gli allenamenti e monitorare i progressi in palestra. E realizzata con HTML, CSS e JavaScript vanilla, pubblicabile su GitHub Pages e collegata a Supabase per autenticazione e sincronizzazione cloud.
 
 ## Funzioni
 
@@ -19,6 +21,27 @@ GymBoard e una Progressive Web App mobile-first per registrare e monitorare gli 
 - Fallback `localStorage` soltanto quando Supabase non è configurato
 - Installazione come PWA e utilizzo offline
 - Struttura dati separata, pronta per un futuro adapter Supabase
+
+## Roadmap
+
+- Migliorare la gestione di serie ed esercizi durante l'allenamento
+- Aggiungere modifica e riordinamento delle schede
+- Introdurre obiettivi personali e statistiche avanzate
+- Migliorare la sincronizzazione e l'esperienza offline
+- Aggiungere recupero password e gestione del profilo
+- Preparare la versione v1.0
+
+## Changelog
+
+### v0.1 - Prima versione funzionante
+
+- Dashboard pubblicata su GitHub Pages
+- Integrazione Supabase
+- Login utente
+- Funzione "ricordami"
+- Tracking base allenamenti
+- Tracking peso corporeo
+- Sincronizzazione dati cloud
 
 ## Avvio locale
 

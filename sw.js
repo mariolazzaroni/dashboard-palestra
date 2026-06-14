@@ -1,4 +1,4 @@
-const CACHE_NAME = "gymboard-toggle-stats";
+const CACHE_NAME = "gymboard-remember-login";
 const APP_ASSETS = [
   "./",
   "./index.html",

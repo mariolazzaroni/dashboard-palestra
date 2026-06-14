@@ -22,6 +22,7 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 - Login separato con email e password
 - Registrazione separata con nome, email e conferma password
 - Nome utente salvato nei metadata Supabase
+- Opzione **Ricordami** disponibile nel Login
 - Persistenza online tramite Supabase
 - Fallback `localStorage` soltanto quando Supabase non è configurato
 - Installazione come PWA e utilizzo offline
@@ -54,6 +55,7 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 
 - Create due modalita di autenticazione distinte
 - Login semplificato con email e password
+- Ripristinata l'opzione **Ricordami** nel Login
 - Registrazione con nome e conferma password
 - Nome salvato in `user_metadata.full_name`
 - Messaggio di conferma dopo la creazione dell'account

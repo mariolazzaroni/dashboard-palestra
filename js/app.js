@@ -1,5 +1,5 @@
 import { bodyWeightStore, exerciseStore, findExerciseMatches, normalizeExerciseName, planStore, workoutStore } from "./data-store.js";
-import { setRememberSession } from "./auth-storage.js";
+import { isRememberSessionEnabled, setRememberSession } from "./auth-storage.js";
 import { isSupabaseConfigured, supabase, supabaseInitializationError } from "./supabase-client.js";
 
 const app = document.querySelector("#app");
@@ -88,6 +88,7 @@ function renderAuth(mode = "login", message = "") {
         <div class="field"><label for="auth-email">Email</label><input id="auth-email" name="email" type="email" autocomplete="email" required /></div>
         <div class="field"><label for="auth-password">Password</label><input id="auth-password" name="password" type="password" autocomplete="${isRegistration ? "new-password" : "current-password"}" minlength="6" required /></div>
         ${isRegistration ? '<div class="field"><label for="auth-password-confirmation">Conferma password</label><input id="auth-password-confirmation" name="passwordConfirmation" type="password" autocomplete="new-password" minlength="6" required /></div>' : ""}
+        ${isRegistration ? "" : `<label class="remember-control" for="auth-remember"><input id="auth-remember" name="remember" type="checkbox" ${isRememberSessionEnabled() ? "checked" : ""} /><span>Ricordami</span></label>`}
         <div class="auth-actions">
           <button class="button" type="submit">${isRegistration ? "Crea account" : "Accedi"}</button>
         </div>
@@ -114,6 +115,7 @@ function authValues(mode) {
     email: String(data.get("email")).trim(),
     password: String(data.get("password")),
     passwordConfirmation: mode === "registration" ? String(data.get("passwordConfirmation")) : "",
+    remember: mode === "login" && data.get("remember") === "on",
   };
 }
 
@@ -155,7 +157,7 @@ async function handleAuth(event, action) {
       renderAuth("login", "Account creato. Ora puoi accedere.");
       return;
     } else {
-      setRememberSession(true);
+      setRememberSession(values.remember);
       const { data, error } = await supabase.auth.signInWithPassword({
         email: values.email,
         password: values.password,

@@ -46,6 +46,8 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 - Sfondo viola esteso fino al bordo dell'icona
 - Formato quadrato pieno senza maschera incorporata, compatibile con la sagoma applicata da iOS
 - Proporzioni della G ottimizzate per la schermata Home di iPhone
+- Nuovi nomi fisici degli asset per evitare il riuso delle vecchie icone da parte di Safari
+- `apple-touch-icon.png` e `favicon.ico` disponibili anche nella radice del sito
 - Icone PWA da 192 e 512 pixel aggiornate
 - Aggiunta icona Apple Touch dedicata per Safari e iOS
 - Aggiunte favicon nei formati PNG e ICO

@@ -1,4 +1,4 @@
-const CACHE_NAME = "gymboard-v1.3.5-icons-v4";
+const CACHE_NAME = "gymboard-v1.3.5-icons-v5";
 const APP_ASSETS = [
   "./",
   "./index.html",
@@ -9,12 +9,12 @@ const APP_ASSETS = [
   "./js/data-store.js",
   "./js/supabase-client.js",
   "./manifest.webmanifest",
-  "./assets/icon.svg",
-  "./assets/icon-192.png",
-  "./assets/icon-512.png",
-  "./assets/apple-touch-icon.png",
-  "./assets/favicon.png",
-  "./assets/favicon.ico",
+  "./apple-touch-icon.png",
+  "./favicon.ico",
+  "./assets/gymboard-icon-v5.svg",
+  "./assets/gymboard-icon-192-v5.png",
+  "./assets/gymboard-icon-512-v5.png",
+  "./assets/favicon-v5.png",
 ];
 
 self.addEventListener("install", (event) => {

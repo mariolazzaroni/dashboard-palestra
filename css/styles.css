@@ -608,8 +608,18 @@ h3 {
 
 .auth-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
+}
+
+.auth-switch {
+  margin: 20px 0 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+.auth-switch .text-button {
+  margin: 0 0 0 4px;
 }
 
 .remember-control {

@@ -1,6 +1,6 @@
 # GymBoard
 
-**Current Version: v1.1**
+**Current Version: v1.2**
 
 GymBoard e una Progressive Web App mobile-first per creare schede personalizzate, registrare gli allenamenti e monitorare i progressi in palestra. E realizzata con HTML, CSS e JavaScript vanilla, pubblicabile su GitHub Pages e collegata a Supabase per autenticazione e sincronizzazione cloud.
 
@@ -19,8 +19,9 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 - Grafico XY aggregato per esercizio, indipendentemente dalla scheda utilizzata
 - Registrazione giornaliera e grafico del peso corporeo
 - Promemoria in Home quando manca la misurazione di oggi
-- Login e registrazione con nome, email e password
-- Opzione **Ricordami** per scegliere la durata della sessione
+- Login separato con email e password
+- Registrazione separata con nome, email e conferma password
+- Nome utente salvato nei metadata Supabase
 - Persistenza online tramite Supabase
 - Fallback `localStorage` soltanto quando Supabase non è configurato
 - Installazione come PWA e utilizzo offline
@@ -36,6 +37,14 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 - Aggiungere esportazione e importazione dei dati
 
 ## Changelog
+
+### v1.2 - Login e registrazione separati
+
+- Create due modalita di autenticazione distinte
+- Login semplificato con email e password
+- Registrazione con nome e conferma password
+- Nome salvato in `user_metadata.full_name`
+- Messaggio di conferma dopo la creazione dell'account
 
 ### v1.1 - Peso corporeo giornaliero
 
@@ -122,7 +131,7 @@ Per una nuova installazione:
 2. Esegui l'intero file `supabase-schema.sql` per creare tabelle, indici e policy RLS.
 3. Verifica in **Authentication > Providers** che Email sia abilitato.
 4. In **Authentication > URL Configuration**, aggiungi l'URL GitHub Pages tra i Redirect URLs.
-5. Apri GymBoard, inserisci nome, email e password, quindi scegli **Crea account**.
+5. Apri GymBoard, passa alla modalita **Registrazione** e crea l'account.
 
 ### Aggiornamento da v0.1 a v1.0
 
@@ -136,9 +145,9 @@ Prima di pubblicare il codice v1.0 su GitHub Pages:
 
 La migrazione crea un esercizio unico per utente e nome normalizzato, collega le vecchie righe di `plan_exercises` e `exercise_results`, aggiunge `archived_at` alle schede e conserva tutti gli allenamenti precedenti.
 
-Se la conferma email è abilitata, il primo accesso richiede il link ricevuto via email. Nei login successivi il nome inserito aggiorna i metadata del profilo e viene mostrato nella Home.
+Se la conferma email è abilitata, il primo accesso richiede il link ricevuto via email. Il nome viene salvato durante la registrazione in `user_metadata.full_name` e mostrato nella Home dopo l'accesso.
 
-Con **Ricordami** selezionato, Supabase conserva la sessione in `localStorage` e l'accesso rimane disponibile dopo la chiusura del browser. Senza selezione, la sessione usa `sessionStorage`: rimane durante i refresh della scheda, ma viene eliminata alla chiusura della scheda o del browser. Il pulsante **Esci** invalida la sessione e rimuove i token da entrambi gli storage.
+Supabase conserva la sessione in `localStorage`, mentre il pulsante **Esci** la invalida e rimuove i token dagli storage del browser.
 
 `supabase-js` viene importato direttamente da jsDelivr come modulo ESM, senza npm e senza build. La compatibilità con GitHub Pages rimane invariata.
 

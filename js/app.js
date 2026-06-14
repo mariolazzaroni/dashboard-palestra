@@ -1,5 +1,5 @@
 import { bodyWeightStore, exerciseStore, findExerciseMatches, normalizeExerciseName, planStore, workoutStore } from "./data-store.js";
-import { isRememberSessionEnabled, setRememberSession } from "./auth-storage.js";
+import { setRememberSession } from "./auth-storage.js";
 import { isSupabaseConfigured, supabase, supabaseInitializationError } from "./supabase-client.js";
 
 const app = document.querySelector("#app");
@@ -31,7 +31,10 @@ const localDateKey = (date = new Date()) => {
 };
 
 function displayName() {
-  return currentUser?.user_metadata?.display_name?.trim() || localStorage.getItem("gymboard-display-name") || "Utente";
+  return currentUser?.user_metadata?.full_name?.trim()
+    || currentUser?.user_metadata?.display_name?.trim()
+    || localStorage.getItem("gymboard-display-name")
+    || "Utente";
 }
 
 function showToast(message, isError = false) {
@@ -71,89 +74,94 @@ function setAuthenticatedLayout(authenticated) {
   userBadge.textContent = authenticated ? displayName() : "";
 }
 
-function renderAuth(message = "") {
+function renderAuth(mode = "login", message = "") {
+  const isRegistration = mode === "registration";
   setAuthenticatedLayout(false);
   app.innerHTML = `
     <section class="auth-card card">
       <p class="eyebrow">GymBoard</p>
-      <h1>Il tuo allenamento, ovunque.</h1>
-      <p class="muted">Accedi oppure crea un account. Il nome inserito verrà usato nel saluto della dashboard.</p>
+      <h1>${isRegistration ? "Crea il tuo account." : "Bentornato."}</h1>
+      <p class="muted">${isRegistration ? "Inserisci i tuoi dati per iniziare a usare la dashboard." : "Accedi per ritrovare allenamenti e progressi."}</p>
       ${message ? `<p class="auth-message" role="status">${escapeHtml(message)}</p>` : ""}
       <form id="auth-form" class="stack-form">
-        <div class="field"><label for="auth-name">Il tuo nome</label><input id="auth-name" name="name" autocomplete="name" maxlength="50" placeholder="Mario" required /></div>
+        ${isRegistration ? '<div class="field"><label for="auth-name">Nome</label><input id="auth-name" name="name" autocomplete="name" maxlength="50" required /></div>' : ""}
         <div class="field"><label for="auth-email">Email</label><input id="auth-email" name="email" type="email" autocomplete="email" required /></div>
-        <div class="field"><label for="auth-password">Password</label><input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="6" required /></div>
-        <label class="remember-control" for="auth-remember">
-          <input id="auth-remember" name="remember" type="checkbox" ${isRememberSessionEnabled() ? "checked" : ""} />
-          <span>Ricordami</span>
-        </label>
+        <div class="field"><label for="auth-password">Password</label><input id="auth-password" name="password" type="password" autocomplete="${isRegistration ? "new-password" : "current-password"}" minlength="6" required /></div>
+        ${isRegistration ? '<div class="field"><label for="auth-password-confirmation">Conferma password</label><input id="auth-password-confirmation" name="passwordConfirmation" type="password" autocomplete="new-password" minlength="6" required /></div>' : ""}
         <div class="auth-actions">
-          <button class="button" type="submit">Accedi</button>
-          <button class="button secondary" id="signup-button" type="button">Crea account</button>
+          <button class="button" type="submit">${isRegistration ? "Crea account" : "Accedi"}</button>
         </div>
       </form>
+      <p class="auth-switch">
+        ${isRegistration ? "Hai gia un account?" : "Non hai un account?"}
+        <button class="text-button" id="auth-mode-button" type="button">${isRegistration ? "Accedi" : "Registrati"}</button>
+      </p>
     </section>`;
 
   const form = document.querySelector("#auth-form");
-  form.addEventListener("submit", (event) => handleAuth(event, "signin"));
-  document.querySelector("#signup-button").addEventListener("click", () => handleAuth({ preventDefault() {} }, "signup"));
+  form.addEventListener("submit", (event) => handleAuth(event, mode));
+  document.querySelector("#auth-mode-button").addEventListener("click", () => {
+    renderAuth(isRegistration ? "login" : "registration");
+  });
 }
 
-function authValues() {
+function authValues(mode) {
   const form = document.querySelector("#auth-form");
   if (!form.reportValidity()) return null;
   const data = new FormData(form);
   return {
-    name: String(data.get("name")).trim(),
+    name: mode === "registration" ? String(data.get("name")).trim() : "",
     email: String(data.get("email")).trim(),
     password: String(data.get("password")),
-    remember: data.get("remember") === "on",
+    passwordConfirmation: mode === "registration" ? String(data.get("passwordConfirmation")) : "",
   };
 }
 
 async function handleAuth(event, action) {
   event.preventDefault();
-  const values = authValues();
+  const values = authValues(action);
   if (!values) return;
+  if (action === "registration" && values.password !== values.passwordConfirmation) {
+    showToast("Le password non coincidono", true);
+    return;
+  }
   const buttons = document.querySelectorAll("#auth-form button");
   buttons.forEach((button) => (button.disabled = true));
 
   try {
     if (!isSupabaseConfigured) {
-      localStorage.setItem("gymboard-display-name", values.name);
-      currentUser = { user_metadata: { display_name: values.name } };
+      if (action === "registration") {
+        localStorage.setItem("gymboard-display-name", values.name);
+        renderAuth("login", "Account creato. Ora puoi accedere.");
+        return;
+      }
+      currentUser = { user_metadata: { full_name: localStorage.getItem("gymboard-display-name") || "Utente" } };
       await showApp();
       return;
     }
 
-    setRememberSession(values.remember);
-
-    if (action === "signup") {
+    if (action === "registration") {
+      setRememberSession(false);
       const { data, error } = await supabase.auth.signUp({
         email: values.email,
         password: values.password,
         options: {
-          data: { display_name: values.name },
+          data: { full_name: values.name, display_name: values.name },
           emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
         },
       });
       if (error) throw error;
-      if (!data.session) {
-        renderAuth("Account creato. Controlla la tua email per confermare l'accesso.");
-        return;
-      }
-      currentUser = data.user;
+      if (data.session) await supabase.auth.signOut();
+      renderAuth("login", "Account creato. Ora puoi accedere.");
+      return;
     } else {
+      setRememberSession(true);
       const { data, error } = await supabase.auth.signInWithPassword({
         email: values.email,
         password: values.password,
       });
       if (error) throw error;
-      const { data: updated, error: updateError } = await supabase.auth.updateUser({
-        data: { display_name: values.name },
-      });
-      if (updateError) throw updateError;
-      currentUser = updated.user || data.user;
+      currentUser = data.user;
     }
     await showApp();
   } catch (error) {
@@ -435,7 +443,7 @@ async function initialize() {
   }
   showLoading();
   const { data, error } = await supabase.auth.getSession();
-  if (error) return renderAuth(error.message);
+  if (error) return renderAuth("login", error.message);
   currentUser = data.session?.user || null;
   if (currentUser) await showApp(); else renderAuth();
 }

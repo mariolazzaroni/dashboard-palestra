@@ -1046,7 +1046,27 @@ h3 {
 
 @media (max-width: 420px) {
   .filters {
+    display: grid;
     grid-template-columns: 1fr;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .filters .field {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .filters input,
+  .filters select {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .workout-card {

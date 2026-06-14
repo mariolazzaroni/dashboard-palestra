@@ -5,6 +5,12 @@ const PLANS_KEY = "gymboard-plans-v1";
 const WORKOUTS_KEY = "gymboard-workouts-v2";
 const BODY_WEIGHTS_KEY = "gymboard-body-weights-v1";
 
+export const EXERCISE_CATEGORIES = ["Petto", "Schiena", "Spalle", "Gambe", "Bicipiti", "Tricipiti", "Core", "Altro"];
+
+function exerciseCategory(value) {
+  return EXERCISE_CATEGORIES.includes(value) ? value : "Altro";
+}
+
 export function normalizeExerciseName(value) {
   return String(value)
     .normalize("NFD")
@@ -84,28 +90,43 @@ class LocalStore {
 
 class LocalExerciseStore extends LocalStore {
   async getAll() {
-    return this.getRaw();
+    const exercises = await this.getRaw();
+    const normalized = exercises.map((exercise) => ({ ...exercise, category: exerciseCategory(exercise.category) }));
+    if (normalized.some((exercise, index) => exercise.category !== exercises[index].category)) await this.save(normalized);
+    return normalized;
   }
 
-  async resolveNames(names) {
+  async resolveNames(entries) {
     const exercises = await this.getAll();
     const resolved = [];
-    for (const rawName of names) {
-      const name = String(rawName).trim();
+    for (const entry of entries) {
+      const name = String(typeof entry === "string" ? entry : entry.name).trim();
+      const hasCategory = typeof entry !== "string" && Boolean(entry.category);
+      const category = exerciseCategory(hasCategory ? entry.category : "Altro");
       let exercise = findEquivalent(exercises, name);
       if (!exercise) {
         exercise = {
           id: crypto.randomUUID?.() ?? `exercise-${Date.now()}-${resolved.length}`,
           name,
           normalizedName: normalizeExerciseName(name),
+          category,
           createdAt: new Date().toISOString(),
         };
         exercises.push(exercise);
+      } else if (hasCategory && exercise.category !== category) {
+        exercise.category = category;
       }
       if (!resolved.some((item) => item.id === exercise.id)) resolved.push(exercise);
     }
     await this.save(exercises);
     return resolved;
+  }
+
+  async updateCategory(id, category) {
+    const exercises = await this.getAll();
+    const updated = exercises.map((exercise) => exercise.id === id ? { ...exercise, category: exerciseCategory(category) } : exercise);
+    await this.save(updated);
+    return updated.find((exercise) => exercise.id === id);
   }
 }
 
@@ -174,6 +195,7 @@ class LocalWorkoutStore extends LocalStore {
       exercises: (workout.exercises || []).map((result) => ({
         ...result,
         name: catalog.find((exercise) => exercise.id === result.exerciseId)?.name || result.name,
+        category: catalog.find((exercise) => exercise.id === result.exerciseId)?.category || "Altro",
       })),
     }));
   }
@@ -217,32 +239,47 @@ function throwIfError(error) {
 
 class SupabaseExerciseStore {
   async getAll() {
-    const { data, error } = await supabase.from("exercises").select("id, name, normalized_name, created_at").order("name");
+    const { data, error } = await supabase.from("exercises").select("id, name, normalized_name, category, created_at").order("name");
     throwIfError(error);
-    return data.map((exercise) => ({ id: exercise.id, name: exercise.name, normalizedName: exercise.normalized_name, createdAt: exercise.created_at }));
+    return data.map((exercise) => ({ id: exercise.id, name: exercise.name, normalizedName: exercise.normalized_name, category: exerciseCategory(exercise.category), createdAt: exercise.created_at }));
   }
 
-  async resolveNames(names) {
+  async resolveNames(entries) {
     const userId = await getUserId();
     const exercises = await this.getAll();
     const resolved = [];
-    for (const rawName of names) {
-      const name = String(rawName).trim();
+    for (const entry of entries) {
+      const name = String(typeof entry === "string" ? entry : entry.name).trim();
+      const hasCategory = typeof entry !== "string" && Boolean(entry.category);
+      const category = exerciseCategory(hasCategory ? entry.category : "Altro");
       let exercise = findEquivalent(exercises, name);
       if (!exercise) {
         const normalizedName = normalizeExerciseName(name);
         const { data, error } = await supabase
           .from("exercises")
-          .upsert({ user_id: userId, name, normalized_name: normalizedName }, { onConflict: "user_id,normalized_name", ignoreDuplicates: false })
-          .select("id, name, normalized_name, created_at")
+          .upsert({ user_id: userId, name, normalized_name: normalizedName, category }, { onConflict: "user_id,normalized_name", ignoreDuplicates: false })
+          .select("id, name, normalized_name, category, created_at")
           .single();
         throwIfError(error);
-        exercise = { id: data.id, name: data.name, normalizedName: data.normalized_name, createdAt: data.created_at };
+        exercise = { id: data.id, name: data.name, normalizedName: data.normalized_name, category: exerciseCategory(data.category), createdAt: data.created_at };
         exercises.push(exercise);
+      } else if (hasCategory && exercise.category !== category) {
+        exercise = await this.updateCategory(exercise.id, category);
       }
       if (!resolved.some((item) => item.id === exercise.id)) resolved.push(exercise);
     }
     return resolved;
+  }
+
+  async updateCategory(id, category) {
+    const { data, error } = await supabase
+      .from("exercises")
+      .update({ category: exerciseCategory(category) })
+      .eq("id", id)
+      .select("id, name, normalized_name, category, created_at")
+      .single();
+    throwIfError(error);
+    return { id: data.id, name: data.name, normalizedName: data.normalized_name, category: exerciseCategory(data.category), createdAt: data.created_at };
   }
 }
 
@@ -250,7 +287,7 @@ class SupabasePlanStore {
   async getAll() {
     const { data, error } = await supabase
       .from("plans")
-      .select("id, name, created_at, archived_at, plan_exercises(position, exercise_id, exercise:exercises(id, name, normalized_name))")
+      .select("id, name, created_at, archived_at, plan_exercises(position, exercise_id, exercise:exercises(id, name, normalized_name, category))")
       .order("created_at", { ascending: false });
     throwIfError(error);
     return data.map((plan) => ({
@@ -261,7 +298,7 @@ class SupabasePlanStore {
       exerciseIds: [...plan.plan_exercises].sort((a, b) => a.position - b.position).map((entry) => entry.exercise_id),
       exercises: [...plan.plan_exercises]
         .sort((a, b) => a.position - b.position)
-        .map((entry) => ({ id: entry.exercise.id, name: entry.exercise.name, normalizedName: entry.exercise.normalized_name })),
+        .map((entry) => ({ id: entry.exercise.id, name: entry.exercise.name, normalizedName: entry.exercise.normalized_name, category: exerciseCategory(entry.exercise.category) })),
     }));
   }
 
@@ -300,7 +337,7 @@ class SupabaseWorkoutStore {
   async getAll() {
     const { data, error } = await supabase
       .from("workouts")
-      .select("id, plan_id, name, duration, total_volume, performed_at, exercise_results(id, exercise_id, exercise_name, sets, reps, load, volume, exercise:exercises(id, name))")
+      .select("id, plan_id, name, duration, total_volume, performed_at, exercise_results(id, exercise_id, exercise_name, sets, reps, load, volume, exercise:exercises(id, name, category))")
       .order("performed_at", { ascending: false });
     throwIfError(error);
     return data.map((workout) => ({
@@ -314,6 +351,7 @@ class SupabaseWorkoutStore {
         id: result.id,
         exerciseId: result.exercise_id,
         name: result.exercise?.name || result.exercise_name,
+        category: exerciseCategory(result.exercise?.category),
         sets: result.sets,
         reps: result.reps,
         load: Number(result.load),

@@ -1,10 +1,11 @@
--- Schema completo GymBoard v1.0 per nuove installazioni.
+-- Schema completo GymBoard v1.4 per nuove installazioni.
 
 create table public.exercises (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null check (char_length(name) between 1 and 100),
   normalized_name text not null,
+  category text not null default 'Altro' check (category in ('Petto', 'Schiena', 'Spalle', 'Gambe', 'Bicipiti', 'Tricipiti', 'Core', 'Altro')),
   created_at timestamptz not null default now(),
   unique (user_id, normalized_name)
 );
@@ -56,6 +57,7 @@ create table public.body_weights (
 );
 
 create index exercises_user_name_idx on public.exercises(user_id, normalized_name);
+create index exercises_user_category_idx on public.exercises(user_id, category);
 create index workouts_user_date_idx on public.workouts(user_id, performed_at desc);
 create index exercise_results_exercise_idx on public.exercise_results(exercise_id, workout_id);
 create index plan_exercises_plan_idx on public.plan_exercises(plan_id, position);

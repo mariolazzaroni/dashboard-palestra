@@ -1,6 +1,6 @@
 # GymBoard
 
-**Current Version: v1.3.6**
+**Current Version: v1.4**
 
 GymBoard e una Progressive Web App mobile-first per creare schede personalizzate, registrare gli allenamenti e monitorare i progressi in palestra. E realizzata con HTML, CSS e JavaScript vanilla, pubblicabile su GitHub Pages e collegata a Supabase per autenticazione e sincronizzazione cloud.
 
@@ -9,6 +9,7 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 - Home con riepilogo settimanale e ultime sessioni
 - Creazione di schede personalizzate, come Lista A e Lista B
 - Catalogo esercizi condiviso con identità stabile
+- Categorie semplici per organizzare gli esercizi e preparare analisi future
 - Suggerimenti automatici durante creazione e modifica delle schede
 - Riconoscimento di nomi equivalenti per evitare esercizi duplicati
 - Esercizi scelti dall'utente con serie, ripetizioni e carico
@@ -55,6 +56,12 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 - Supporto a conoscenze scientifiche e linee guida
 
 ## Changelog
+
+### v1.4 - Categorie esercizi
+
+- Aggiunte categorie esercizi
+- Preparazione analisi dati per report futuri
+- Migliore organizzazione dello storico esercizi
 
 ### v1.3.6 - Restyling header
 
@@ -169,6 +176,7 @@ Tutti i percorsi sono relativi, quindi l'app funziona anche all'indirizzo `https
 ├── manifest.webmanifest # Metadati di installazione
 ├── supabase-schema.sql  # Schema completo per nuove installazioni
 ├── supabase-migration-v1.0.sql # Migrazione dei progetti v0.1
+├── supabase-migration-v1.4.sql # Aggiunta categorie agli esercizi
 └── sw.js                # Cache e funzionamento offline
 ```
 
@@ -203,6 +211,18 @@ Prima di pubblicare il codice v1.0 su GitHub Pages:
 
 La migrazione crea un esercizio unico per utente e nome normalizzato, collega le vecchie righe di `plan_exercises` e `exercise_results`, aggiunge `archived_at` alle schede e conserva tutti gli allenamenti precedenti.
 
+### Aggiornamento da v1.3.6 a v1.4
+
+Prima di pubblicare il codice v1.4 su GitHub Pages:
+
+1. Esegui un backup del database Supabase.
+2. Apri **SQL Editor** nel progetto esistente.
+3. Esegui una sola volta `supabase-migration-v1.4.sql`.
+4. Verifica che la colonna `category` sia presente nella tabella `exercises`.
+5. Pubblica i file della dashboard v1.4.
+
+La migrazione aggiunge `category` a `exercises`, assegna `Altro` agli esercizi esistenti, limita i valori alle categorie supportate e crea un indice per future aggregazioni per utente e categoria. Non crea tabelle cardio e non modifica allenamenti o storico.
+
 Se la conferma email è abilitata, il primo accesso richiede il link ricevuto via email. Il nome viene salvato durante la registrazione in `user_metadata.full_name` e mostrato nella Home dopo l'accesso.
 
 Supabase conserva la sessione in `localStorage`, mentre il pulsante **Esci** la invalida e rimuove i token dagli storage del browser.
@@ -211,7 +231,7 @@ Supabase conserva la sessione in `localStorage`, mentre il pulsante **Esci** la 
 
 Il modello dati e composto da:
 
-- `exercises`: catalogo personale con nome normalizzato e ID stabile
+- `exercises`: catalogo personale con nome normalizzato, ID stabile e categoria muscolare
 - `plans`: Lista A, Lista B e altre schede
 - `plan_exercises`: riferimenti tra schede ed esercizi
 - `workouts`: sessioni completate

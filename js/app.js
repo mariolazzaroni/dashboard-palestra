@@ -1,4 +1,4 @@
-import { bodyWeightStore, exerciseStore, findExerciseMatches, normalizeExerciseName, planStore, workoutStore } from "./data-store.js";
+import { bodyWeightStore, EXERCISE_CATEGORIES, exerciseStore, findExerciseMatches, normalizeExerciseName, planStore, workoutStore } from "./data-store.js";
 import { isRememberSessionEnabled, setRememberSession } from "./auth-storage.js";
 import { isSupabaseConfigured, supabase, supabaseInitializationError } from "./supabase-client.js";
 
@@ -314,7 +314,7 @@ async function renderWorkouts() {
     const row = document.createElement("div");
     row.className = "exercise-builder-row";
     row.dataset.exerciseId = exercise?.id || "";
-    row.innerHTML = `<div class="field exercise-name-field"><label>Nome esercizio</label><input class="exercise-name-input" type="text" maxlength="100" autocomplete="off" value="${escapeHtml(exercise?.name || "")}" placeholder="Es. Panca piana" required /><div class="exercise-suggestions" hidden></div></div><button class="button danger remove-exercise-row" type="button" aria-label="Rimuovi esercizio">×</button>`;
+    row.innerHTML = `<div class="field exercise-name-field"><label>Nome esercizio</label><input class="exercise-name-input" type="text" maxlength="100" autocomplete="off" value="${escapeHtml(exercise?.name || "")}" placeholder="Es. Panca piana" required /><div class="exercise-suggestions" hidden></div></div><div class="field exercise-category-field"><label>Categoria</label><select class="exercise-category-select">${EXERCISE_CATEGORIES.map((category) => `<option value="${category}" ${(exercise?.category || "Altro") === category ? "selected" : ""}>${category}</option>`).join("")}</select></div><button class="button danger remove-exercise-row" type="button" aria-label="Rimuovi esercizio">×</button>`;
     builder.append(row);
     bindExerciseSuggestions(row, exerciseCatalog);
   };
@@ -329,10 +329,12 @@ async function renderWorkouts() {
     const selectedExercises = [];
     try {
       for (const row of rows) {
-        const name = row.querySelector("input").value.trim();
+        const name = row.querySelector(".exercise-name-input").value.trim();
+        const category = row.querySelector(".exercise-category-select").value;
         if (!name) continue;
         let exercise = exerciseCatalog.find((item) => item.id === row.dataset.exerciseId);
-        if (!exercise) [exercise] = await exerciseStore.resolveNames([name]);
+        if (exercise) exercise = await exerciseStore.updateCategory(exercise.id, category);
+        else [exercise] = await exerciseStore.resolveNames([{ name, category }]);
         if (!selectedExercises.some((item) => item.id === exercise.id)) selectedExercises.push(exercise);
       }
       if (!selectedExercises.length) return showToast("Aggiungi almeno un esercizio", true);
@@ -366,7 +368,7 @@ function bindExerciseSuggestions(row, catalog) {
     const selected = catalog.find((exercise) => exercise.id === row.dataset.exerciseId);
     if (!selected || normalizeExerciseName(selected.name) !== normalizeExerciseName(input.value)) row.dataset.exerciseId = "";
     const matches = findExerciseMatches(catalog, input.value);
-    suggestions.innerHTML = matches.map((exercise) => `<button type="button" data-suggestion-id="${exercise.id}"><strong>${escapeHtml(exercise.name)}</strong><span>Usa lo storico esistente</span></button>`).join("");
+    suggestions.innerHTML = matches.map((exercise) => `<button type="button" data-suggestion-id="${exercise.id}"><strong>${escapeHtml(exercise.name)}</strong><span>${escapeHtml(exercise.category || "Altro")} · Usa lo storico esistente</span></button>`).join("");
     suggestions.hidden = !matches.length;
   });
   suggestions.addEventListener("click", (event) => {
@@ -375,6 +377,7 @@ function bindExerciseSuggestions(row, catalog) {
     const exercise = catalog.find((item) => item.id === button.dataset.suggestionId);
     row.dataset.exerciseId = exercise.id;
     input.value = exercise.name;
+    row.querySelector(".exercise-category-select").value = exercise.category || "Altro";
     suggestions.hidden = true;
   });
   row.querySelector(".remove-exercise-row").addEventListener("click", () => row.remove());

@@ -1,4 +1,4 @@
-const CACHE_NAME = "gymboard-v1.4.3-mobile-filters";
+const CACHE_NAME = "gymboard-v1.4.3-history-month-select";
 const APP_ASSETS = [
   "./",
   "./index.html",

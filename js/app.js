@@ -539,7 +539,12 @@ async function saveSession(event, plan) {
 async function renderHistory() {
   const workouts = await getWorkouts();
   const types = [...new Map(workouts.map((workout) => [workout.planId || workout.name, workout.name])).entries()];
-  app.innerHTML = `<section class="page-header"><div><p class="eyebrow">Storico</p><h1>Ogni sessione conta.</h1></div></section><div class="filters"><div class="field"><label for="history-filter">Scheda</label><select id="history-filter"><option value="all">Tutte</option>${types.map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join("")}</select></div><div class="field"><label for="history-month">Mese</label><input id="history-month" type="month" /></div></div><div class="workout-list" id="history-list"></div>`;
+  const months = [...new Set(workouts.map((workout) => workout.date.slice(0, 7)))].sort().reverse();
+  const monthOptions = months.map((month) => {
+    const label = formatDate(`${month}-01T12:00:00`, { month: "long", year: "numeric" });
+    return `<option value="${month}">${escapeHtml(label.charAt(0).toUpperCase() + label.slice(1))}</option>`;
+  }).join("");
+  app.innerHTML = `<section class="page-header"><div><p class="eyebrow">Storico</p><h1>Ogni sessione conta.</h1></div></section><div class="filters"><div class="field"><label for="history-filter">Scheda</label><select id="history-filter"><option value="all">Tutte</option>${types.map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join("")}</select></div><div class="field"><label for="history-month">Mese</label><select id="history-month"><option value="">Tutti i mesi</option>${monthOptions}</select></div></div><div class="workout-list" id="history-list"></div>`;
   const updateList = () => {
     const type = document.querySelector("#history-filter").value;
     const month = document.querySelector("#history-month").value;

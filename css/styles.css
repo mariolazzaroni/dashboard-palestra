@@ -663,14 +663,14 @@ h3 {
 
 .weight-form {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
   align-items: end;
   margin-bottom: 24px;
 }
 
 .weight-form .button {
-  grid-column: 1 / -1;
+  width: 100%;
 }
 
 .xy-chart-wrap {

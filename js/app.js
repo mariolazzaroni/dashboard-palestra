@@ -316,7 +316,7 @@ function planCard(plan) {
 }
 
 async function renderWorkouts() {
-  const [plans, exerciseCatalog] = await Promise.all([planStore.getAll(), exerciseStore.getAll()]);
+  const [plans, exerciseCatalog, workouts] = await Promise.all([planStore.getAll(), exerciseStore.getAll(), getWorkouts()]);
   const activePlans = plans.filter((plan) => !plan.archivedAt);
   const archivedPlans = plans.filter((plan) => plan.archivedAt);
   app.innerHTML = `
@@ -327,7 +327,7 @@ async function renderWorkouts() {
     ${archivedPlans.length ? `<div class="section-heading"><h2>Schede archiviate</h2></div><section class="template-grid archived-grid">${archivedPlans.map(planCard).join("")}</section>` : ""}<section class="card session-card" id="session-card" hidden></section>`;
 
   const builder = document.querySelector("#exercise-builder");
-  document.querySelector("#resume-workout")?.addEventListener("click", () => resumeActiveWorkout(plans));
+  document.querySelector("#resume-workout")?.addEventListener("click", () => resumeActiveWorkout(plans, workouts));
   document.querySelector("#discard-workout")?.addEventListener("click", async () => {
     if (!window.confirm("Scartare l'allenamento in corso? I dati inseriti andranno persi.")) return;
     clearActiveWorkout();
@@ -369,7 +369,7 @@ async function renderWorkouts() {
       await renderWorkouts();
     } catch (error) { showToast(error.message, true); }
   });
-  document.querySelectorAll("[data-start-plan]").forEach((button) => button.addEventListener("click", () => openSession(button.dataset.startPlan, plans)));
+  document.querySelectorAll("[data-start-plan]").forEach((button) => button.addEventListener("click", () => openSession(button.dataset.startPlan, plans, workouts)));
   document.querySelectorAll("[data-edit-plan]").forEach((button) => button.addEventListener("click", () => {
     const plan = plans.find((item) => item.id === button.dataset.editPlan);
     document.querySelector("#plan-id").value = plan.id;
@@ -427,24 +427,49 @@ function resetPlanForm(addRow) {
   addRow();
 }
 
-function openSession(planId, plans) {
+function latestExerciseLoads(workouts) {
+  const loads = new Map();
+  workouts.forEach((workout) => {
+    workout.exercises?.forEach((exercise) => {
+      if (!loads.has(exercise.exerciseId) && Number.isFinite(Number(exercise.load))) {
+        loads.set(exercise.exerciseId, Number(exercise.load));
+      }
+    });
+  });
+  return loads;
+}
+
+function openSession(planId, plans, workouts) {
   const plan = plans.find((item) => item.id === planId);
   if (!plan) return;
   const existing = getActiveWorkout();
   if (existing && existing.planId !== planId && !window.confirm("Hai già un allenamento in corso. Vuoi scartarlo e iniziarne uno nuovo?")) return;
+  const previousLoads = latestExerciseLoads(workouts);
   const draft = existing?.planId === planId ? existing : {
     planId: plan.id,
     name: plan.name,
     notes: "",
-    exercises: plan.exercises.map((exercise) => ({ exerciseId: exercise.id, name: exercise.name, sets: 3, reps: 8, load: 0 })),
+    exercises: plan.exercises.map((exercise) => ({
+      exerciseId: exercise.id,
+      name: exercise.name,
+      sets: 3,
+      reps: 8,
+      load: "",
+      previousLoad: previousLoads.get(exercise.id),
+    })),
   };
   saveActiveWorkout(draft);
   renderActiveWorkout(plan, draft);
 }
 
-function resumeActiveWorkout(plans) {
+function resumeActiveWorkout(plans, workouts) {
   const draft = getActiveWorkout();
   if (!draft) return;
+  const previousLoads = latestExerciseLoads(workouts);
+  draft.exercises = draft.exercises.map((exercise) => ({
+    ...exercise,
+    previousLoad: exercise.previousLoad ?? previousLoads.get(exercise.exerciseId),
+  }));
   const plan = plans.find((item) => item.id === draft.planId) || {
     id: draft.planId,
     name: draft.name,
@@ -472,7 +497,9 @@ function renderActiveWorkout(plan, draft) {
 }
 
 function exerciseEntry(exercise, index, values = {}) {
-  return `<fieldset class="exercise-entry"><legend>${escapeHtml(exercise.name)}</legend><input type="hidden" name="exercise-id-${index}" value="${exercise.id}" /><div class="exercise-values"><div class="field"><label for="sets-${index}">Serie</label><input id="sets-${index}" name="sets-${index}" type="number" min="1" value="${values.sets ?? 3}" required /></div><div class="field"><label for="reps-${index}">Rip.</label><input id="reps-${index}" name="reps-${index}" type="number" min="1" value="${values.reps ?? 8}" required /></div><div class="field"><label for="load-${index}">Kg</label><input id="load-${index}" name="load-${index}" type="number" min="0" step="0.5" value="${values.load ?? 0}" required /></div></div></fieldset>`;
+  const loadValue = values.load === undefined || values.load === null ? "" : values.load;
+  const previousLoad = Number.isFinite(Number(values.previousLoad)) ? Number(values.previousLoad) : null;
+  return `<fieldset class="exercise-entry"><legend>${escapeHtml(exercise.name)}</legend><input type="hidden" name="exercise-id-${index}" value="${exercise.id}" /><div class="exercise-values"><div class="field"><label for="sets-${index}">Serie</label><input id="sets-${index}" name="sets-${index}" type="number" min="1" value="${values.sets ?? 3}" required /></div><div class="field"><label for="reps-${index}">Rip.</label><input id="reps-${index}" name="reps-${index}" type="number" min="1" value="${values.reps ?? 8}" required /></div><div class="field"><label for="load-${index}">Kg</label><input id="load-${index}" name="load-${index}" type="number" min="0" step="0.5" value="${escapeHtml(loadValue)}" placeholder="kg" required />${previousLoad === null ? "" : `<small class="field-hint">Ultima volta: ${formatNumber(previousLoad)} kg</small>`}</div></div></fieldset>`;
 }
 
 function readSessionDraft(form, plan) {
@@ -486,7 +513,8 @@ function readSessionDraft(form, plan) {
       name: exercise.name,
       sets: Number(data.get(`sets-${index}`)),
       reps: Number(data.get(`reps-${index}`)),
-      load: Number(data.get(`load-${index}`)),
+      load: String(data.get(`load-${index}`) || ""),
+      previousLoad: getActiveWorkout()?.exercises?.[index]?.previousLoad,
     })),
   };
 }

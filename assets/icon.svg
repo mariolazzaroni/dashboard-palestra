@@ -1,4 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="GymBoard">
-  <rect width="512" height="512" rx="112" fill="#64ad36"/>
+  <defs>
+    <linearGradient id="background" x1="80" y1="40" x2="430" y2="470" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A19CFF"/>
+      <stop offset="1" stop-color="#6265DB"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#151720"/>
+  <rect x="28" y="28" width="456" height="456" rx="92" fill="url(#background)"/>
   <path d="M256 110c61 0 108 31 135 69l-57 35c-17-23-43-39-78-39-59 0-101 44-101 105s42 105 101 105c29 0 55-11 70-25v-38h-87v-61h156v124c-34 39-81 65-139 65-97 0-176-68-176-170s79-170 176-170z" fill="#fff"/>
 </svg>

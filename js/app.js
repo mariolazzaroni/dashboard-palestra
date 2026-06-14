@@ -185,30 +185,112 @@ function workoutCard(workout, removable = false) {
     </article>`;
 }
 
-function weeklyStats(workouts) {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - 6);
-  const current = workouts.filter((workout) => new Date(workout.date) >= start);
+function workoutStats(workouts, period, selectedMonth, selectedYear) {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfWeek = new Date(startOfToday);
+  const dayFromMonday = (startOfWeek.getDay() + 6) % 7;
+  startOfWeek.setDate(startOfWeek.getDate() - dayFromMonday);
+
+  const current = workouts.filter((workout) => {
+    const date = new Date(workout.date);
+    if (period === "week") return date >= startOfWeek && date <= now;
+    if (period === "month") {
+      return date.getFullYear() === Number(selectedYear) && date.getMonth() === Number(selectedMonth);
+    }
+    return date.getFullYear() === Number(selectedYear);
+  });
+
   return {
     count: current.length,
-    minutes: current.reduce((sum, workout) => sum + workout.duration, 0),
     volume: current.reduce((sum, workout) => sum + workout.volume, 0),
   };
+}
+
+function renderHomeStats(workouts) {
+  const period = document.querySelector("#stats-period").dataset.value;
+  const monthInput = document.querySelector("#stats-month");
+  const yearInput = document.querySelector("#stats-year");
+  const stats = workoutStats(workouts, period, monthInput.dataset.value, yearInput.dataset.value);
+  const volume = period === "week"
+    ? `${formatNumber(stats.volume)} kg`
+    : `${formatNumber(stats.volume / 1000)} t`;
+
+  document.querySelector("#stats-month-controls").hidden = period !== "month";
+  document.querySelector("#stats-year-control").hidden = period === "week";
+  document.querySelector("#home-stats").innerHTML = `
+    <article class="stat-card"><strong>${stats.count}</strong><span>Sessioni</span></article>
+    <article class="stat-card volume-stat"><strong>${volume}</strong><span>Volume totale</span></article>`;
+}
+
+function bindStatSelect(id, onChange) {
+  const select = document.querySelector(`#${id}`);
+  const trigger = select.querySelector(".toggle-select-trigger");
+  const menu = select.querySelector(".toggle-select-menu");
+
+  trigger.addEventListener("click", () => {
+    const opening = menu.hidden;
+    document.querySelectorAll(".toggle-select-menu").forEach((item) => (item.hidden = true));
+    document.querySelectorAll(".toggle-select-trigger").forEach((item) => item.setAttribute("aria-expanded", "false"));
+    menu.hidden = !opening;
+    trigger.setAttribute("aria-expanded", String(opening));
+  });
+
+  menu.addEventListener("click", (event) => {
+    const option = event.target.closest("[data-value]");
+    if (!option) return;
+    select.dataset.value = option.dataset.value;
+    trigger.querySelector("span").textContent = option.textContent;
+    menu.querySelectorAll("button").forEach((button) => button.classList.toggle("selected", button === option));
+    menu.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+    onChange();
+  });
 }
 
 async function renderHome() {
   const [workouts, bodyWeights] = await Promise.all([getWorkouts(), getBodyWeights()]);
   const latestWeight = bodyWeights[0];
   const recordedToday = latestWeight?.date === localDateKey();
-  const stats = weeklyStats(workouts);
+  const today = new Date();
+  const currentMonth = today.getMonth();
+  const monthNames = Array.from({ length: 12 }, (_, month) => {
+    const name = new Intl.DateTimeFormat("it-IT", { month: "long" }).format(new Date(2024, month, 1));
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  });
+  const availableYears = [...new Set([
+    today.getFullYear(),
+    ...workouts.map((workout) => new Date(workout.date).getFullYear()),
+  ])].sort((a, b) => b - a);
   app.innerHTML = `
     <section class="page-header"><div><p class="eyebrow">Il tuo diario</p><h1>Ciao, ${escapeHtml(displayName())}.</h1><p class="last-weight">${latestWeight ? `Ultimo peso: <strong>${formatNumber(latestWeight.weight)} kg</strong>, registrato il ${formatDate(`${latestWeight.date}T12:00:00`, { day: "numeric", month: "long", year: "numeric" })}.` : "Non hai ancora registrato il peso corporeo."}</p></div></section>
     ${recordedToday ? "" : `<section class="weight-reminder" role="alert"><div><p class="eyebrow">Promemoria di oggi</p><h2>Registra il tuo peso</h2><p>${latestWeight ? "L'ultima misurazione non è di oggi." : "Inizia a costruire il tuo andamento corporeo."}</p></div><a class="button" href="#progress">Aggiungi peso</a></section>`}
     <section class="hero"><p class="eyebrow">La tua routine</p><h2>Costruisci, registra, migliora.</h2><p>Crea le schede A/B, inserisci i carichi per ogni esercizio e segui i progressi nel tempo.</p><a class="button" href="#workouts">Gestisci schede</a></section>
-    <section class="stats-grid" aria-label="Riepilogo settimanale"><article class="stat-card"><strong>${stats.count}</strong><span>Sessioni</span></article><article class="stat-card"><strong>${stats.minutes}</strong><span>Minuti</span></article><article class="stat-card"><strong>${formatNumber(stats.volume / 1000)}t</strong><span>Volume</span></article></section>
+    <section class="stats-summary" aria-label="Riepilogo allenamenti">
+      <div class="stats-controls">
+        <div class="toggle-select" id="stats-period" data-value="week">
+          <span class="toggle-select-label">Periodo</span>
+          <button class="toggle-select-trigger" type="button" aria-expanded="false"><span>Settimana corrente</span><b aria-hidden="true">⌄</b></button>
+          <div class="toggle-select-menu" hidden><button class="selected" type="button" data-value="week">Settimana corrente</button><button type="button" data-value="month">Mese</button><button type="button" data-value="year">Anno</button></div>
+        </div>
+        <div class="toggle-select stats-date-control" id="stats-year-control" hidden>
+          <span class="toggle-select-label">Anno</span>
+          <div id="stats-year" data-value="${today.getFullYear()}"><button class="toggle-select-trigger" type="button" aria-expanded="false"><span>${today.getFullYear()}</span><b aria-hidden="true">⌄</b></button><div class="toggle-select-menu" hidden>${availableYears.map((year) => `<button class="${year === today.getFullYear() ? "selected" : ""}" type="button" data-value="${year}">${year}</button>`).join("")}</div></div>
+        </div>
+        <div class="toggle-select stats-date-control" id="stats-month-controls" hidden>
+          <span class="toggle-select-label">Mese</span>
+          <div id="stats-month" data-value="${currentMonth}"><button class="toggle-select-trigger" type="button" aria-expanded="false"><span>${monthNames[currentMonth]}</span><b aria-hidden="true">⌄</b></button><div class="toggle-select-menu" hidden>${monthNames.map((month, index) => `<button class="${index === currentMonth ? "selected" : ""}" type="button" data-value="${index}">${month}</button>`).join("")}</div></div>
+        </div>
+      </div>
+      <div class="stats-grid" id="home-stats"></div>
+    </section>
     <div class="section-heading"><h2>Ultimi allenamenti</h2><a href="#history">Vedi tutti</a></div>
     <div class="workout-list">${workouts.length ? workouts.slice(0, 3).map((workout) => workoutCard(workout)).join("") : '<div class="empty-state">Crea una scheda e registra il primo allenamento.</div>'}</div>`;
+
+  bindStatSelect("stats-period", () => renderHomeStats(workouts));
+  bindStatSelect("stats-month", () => renderHomeStats(workouts));
+  bindStatSelect("stats-year", () => renderHomeStats(workouts));
+  renderHomeStats(workouts);
 }
 
 function planCard(plan) {

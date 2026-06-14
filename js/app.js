@@ -296,7 +296,10 @@ async function renderHome() {
 }
 
 function planCard(plan) {
-  return `<article class="card template-card ${plan.archivedAt ? "archived-card" : ""}"><div><div class="plan-title"><h3>${escapeHtml(plan.name)}</h3>${plan.archivedAt ? '<span class="status-badge">Archiviata</span>' : ""}</div><p class="workout-meta">${plan.exercises.length} esercizi</p><div class="exercise-tags">${plan.exercises.map((exercise) => `<span class="tag">${escapeHtml(exercise.name)}</span>`).join("")}</div></div>${plan.archivedAt ? "" : `<div class="card-actions"><button class="button" data-start-plan="${plan.id}">Avvia</button><button class="button secondary" data-edit-plan="${plan.id}">Modifica</button><button class="button secondary" data-archive-plan="${plan.id}">Archivia</button></div>`}</article>`;
+  const actions = plan.archivedAt
+    ? `<div class="card-actions"><button class="button secondary" data-restore-plan="${plan.id}">Ripristina</button><button class="button danger" data-delete-plan="${plan.id}">Elimina definitivamente</button></div>`
+    : `<div class="card-actions"><button class="button" data-start-plan="${plan.id}">Avvia</button><button class="button secondary" data-edit-plan="${plan.id}">Modifica</button><button class="button secondary" data-archive-plan="${plan.id}">Archivia</button><button class="button danger" data-delete-plan="${plan.id}">Elimina</button></div>`;
+  return `<article class="card template-card ${plan.archivedAt ? "archived-card" : ""}"><div><div class="plan-title"><h3>${escapeHtml(plan.name)}</h3>${plan.archivedAt ? '<span class="status-badge">Archiviata</span>' : ""}</div><p class="workout-meta">${plan.exercises.length} esercizi</p><div class="exercise-tags">${plan.exercises.map((exercise) => `<span class="tag">${escapeHtml(exercise.name)}</span>`).join("")}</div></div>${actions}</article>`;
 }
 
 async function renderWorkouts() {
@@ -358,6 +361,17 @@ async function renderWorkouts() {
   }));
   document.querySelectorAll("[data-archive-plan]").forEach((button) => button.addEventListener("click", async () => {
     try { await planStore.archive(button.dataset.archivePlan); showToast("Scheda archiviata"); await renderWorkouts(); } catch (error) { showToast(error.message, true); }
+  }));
+  document.querySelectorAll("[data-restore-plan]").forEach((button) => button.addEventListener("click", async () => {
+    try { await planStore.restore(button.dataset.restorePlan); showToast("Scheda ripristinata"); await renderWorkouts(); } catch (error) { showToast(error.message, true); }
+  }));
+  document.querySelectorAll("[data-delete-plan]").forEach((button) => button.addEventListener("click", async () => {
+    const plan = plans.find((item) => item.id === button.dataset.deletePlan);
+    const message = plan?.archivedAt
+      ? `Eliminare definitivamente la scheda "${plan.name}"? Lo storico degli allenamenti resterà disponibile.`
+      : `Eliminare la scheda "${plan?.name || "selezionata"}"? Esercizi e storico degli allenamenti non verranno eliminati.`;
+    if (!window.confirm(message)) return;
+    try { await planStore.remove(button.dataset.deletePlan); showToast("Scheda eliminata"); await renderWorkouts(); } catch (error) { showToast(error.message, true); }
   }));
 }
 

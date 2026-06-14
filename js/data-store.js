@@ -169,6 +169,14 @@ class LocalPlanStore extends LocalStore {
   async archive(id) {
     await this.update(id, { archivedAt: new Date().toISOString() });
   }
+
+  async restore(id) {
+    await this.update(id, { archivedAt: null });
+  }
+
+  async remove(id) {
+    await super.remove(id);
+  }
 }
 
 class LocalWorkoutStore extends LocalStore {
@@ -329,6 +337,16 @@ class SupabasePlanStore {
 
   async archive(id) {
     const { error } = await supabase.from("plans").update({ archived_at: new Date().toISOString() }).eq("id", id);
+    throwIfError(error);
+  }
+
+  async restore(id) {
+    const { error } = await supabase.from("plans").update({ archived_at: null }).eq("id", id);
+    throwIfError(error);
+  }
+
+  async remove(id) {
+    const { error } = await supabase.from("plans").delete().eq("id", id);
     throwIfError(error);
   }
 }

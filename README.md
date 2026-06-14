@@ -1,6 +1,6 @@
 # GymBoard
 
-**Current Version: v1.3**
+**Current Version: v1.3.5**
 
 GymBoard e una Progressive Web App mobile-first per creare schede personalizzate, registrare gli allenamenti e monitorare i progressi in palestra. E realizzata con HTML, CSS e JavaScript vanilla, pubblicabile su GitHub Pages e collegata a Supabase per autenticazione e sincronizzazione cloud.
 
@@ -26,6 +26,7 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 - Persistenza online tramite Supabase
 - Fallback `localStorage` soltanto quando Supabase non è configurato
 - Installazione come PWA e utilizzo offline
+- Set completo di icone viola per browser, Safari e installazione PWA
 - Struttura dati separata, pronta per un futuro adapter Supabase
 
 ## Roadmap
@@ -38,6 +39,16 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 - Aggiungere esportazione e importazione dei dati
 
 ## Changelog
+
+### v1.3.5 - Identita visiva PWA
+
+- Nuovo logo viola con una G geometrica centrale
+- Cornice esterna bianca per una maggiore pulizia visiva
+- Icone PWA da 192 e 512 pixel aggiornate
+- Aggiunta icona Apple Touch dedicata per Safari e iOS
+- Aggiunte favicon nei formati PNG e ICO
+- Manifest e meta tag delle icone uniformati
+- Versionamento degli URL delle icone per evitare vecchie copie in cache
 
 ### v1.3 - Restyling e statistiche Home
 
@@ -134,6 +145,13 @@ Tutti i percorsi sono relativi, quindi l'app funziona anche all'indirizzo `https
 ├── supabase-migration-v1.0.sql # Migrazione dei progetti v0.1
 └── sw.js                # Cache e funzionamento offline
 ```
+
+Le icone presenti in `assets` condividono lo stesso logo e la stessa palette:
+
+- `icon.svg`: sorgente vettoriale e favicon moderna
+- `favicon.png` e `favicon.ico`: icone per browser
+- `apple-touch-icon.png`: icona dedicata a Safari e iOS
+- `icon-192.png` e `icon-512.png`: icone dichiarate nel manifest PWA
 
 ## Supabase
 

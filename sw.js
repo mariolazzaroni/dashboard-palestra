@@ -1,4 +1,4 @@
-const CACHE_NAME = "gymboard-remember-login";
+const CACHE_NAME = "gymboard-v1.3.5";
 const APP_ASSETS = [
   "./",
   "./index.html",
@@ -12,6 +12,9 @@ const APP_ASSETS = [
   "./assets/icon.svg",
   "./assets/icon-192.png",
   "./assets/icon-512.png",
+  "./assets/apple-touch-icon.png",
+  "./assets/favicon.png",
+  "./assets/favicon.ico",
 ];
 
 self.addEventListener("install", (event) => {

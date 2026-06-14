@@ -1045,6 +1045,34 @@ h3 {
 }
 
 @media (max-width: 420px) {
+  .filters {
+    grid-template-columns: 1fr;
+  }
+
+  .workout-card {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .workout-card > div:nth-child(2) {
+    min-width: 0;
+  }
+
+  .workout-card h3,
+  .workout-card .workout-meta {
+    overflow-wrap: anywhere;
+  }
+
+  .workout-card .date-tile {
+    width: 44px;
+  }
+
+  .workout-card .button.danger {
+    width: 44px;
+    padding: 0;
+  }
+
   .active-workout-notice {
     align-items: stretch;
     flex-direction: column;

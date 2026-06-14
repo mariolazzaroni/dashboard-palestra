@@ -470,6 +470,19 @@ h3 {
   margin-bottom: 28px;
 }
 
+.active-workout-notice {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  border-color: rgb(139 140 255 / 35%);
+}
+
+.active-workout-notice h2 {
+  margin-bottom: 0;
+}
+
 .stack-form,
 .exercise-entry-list {
   display: grid;
@@ -971,6 +984,11 @@ h3 {
 }
 
 @media (max-width: 420px) {
+  .active-workout-notice {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .exercise-builder-row {
     grid-template-columns: 1fr auto;
   }

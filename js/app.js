@@ -9,6 +9,19 @@ const logoutButton = document.querySelector("#logout-button");
 const userBadge = document.querySelector("#user-badge");
 let currentUser = null;
 let deferredInstallPrompt;
+const ACTIVE_WORKOUT_KEY = "gymboard-active-workout-v1";
+
+function getActiveWorkout() {
+  try { return JSON.parse(localStorage.getItem(ACTIVE_WORKOUT_KEY)); } catch { return null; }
+}
+
+function saveActiveWorkout(draft) {
+  localStorage.setItem(ACTIVE_WORKOUT_KEY, JSON.stringify({ ...draft, updatedAt: new Date().toISOString() }));
+}
+
+function clearActiveWorkout() {
+  localStorage.removeItem(ACTIVE_WORKOUT_KEY);
+}
 
 const escapeHtml = (value) =>
   String(value)
@@ -182,7 +195,7 @@ function workoutCard(workout, removable = false) {
   return `
     <article class="card workout-card">
       <div class="date-tile"><span>${formatDate(date, { month: "short" })}</span><strong>${date.getDate()}</strong></div>
-      <div><h3>${escapeHtml(workout.name)}</h3><p class="workout-meta">${workout.duration} min · ${workout.exercises?.length || 0} esercizi · ${formatNumber(workout.volume)} kg</p></div>
+      <div><h3>${escapeHtml(workout.name)}</h3><p class="workout-meta">${workout.exercises?.length || 0} esercizi · ${formatNumber(workout.volume)} kg</p></div>
       ${removable ? `<button class="button danger" data-remove-workout="${workout.id}" aria-label="Elimina allenamento">×</button>` : ""}
     </article>`;
 }
@@ -308,11 +321,19 @@ async function renderWorkouts() {
   const archivedPlans = plans.filter((plan) => plan.archivedAt);
   app.innerHTML = `
     <section class="page-header"><div><p class="eyebrow">Allenamenti</p><h1>Le tue schede.</h1></div></section>
+    ${getActiveWorkout() ? '<section class="card active-workout-notice"><div><p class="eyebrow">Allenamento in corso</p><h2>Hai un allenamento in corso. Vuoi riprenderlo?</h2></div><div class="card-actions"><button class="button" id="resume-workout" type="button">Riprendi</button><button class="button danger" id="discard-workout" type="button">Scarta</button></div></section>' : ""}
     <section class="card plan-creator"><h2 id="plan-form-title">Crea una scheda</h2><form id="plan-form" class="stack-form"><input type="hidden" id="plan-id" name="planId" /><div class="field"><label for="plan-name">Nome</label><input id="plan-name" name="name" maxlength="50" placeholder="Lista A" required /></div><div><label class="field-label">Esercizi</label><div class="exercise-builder" id="exercise-builder"></div><button class="text-button" id="add-exercise-row" type="button">+ Aggiungi esercizio</button></div><div class="form-actions"><button class="button" type="submit">Salva scheda</button><button class="button secondary" id="cancel-plan-edit" type="button" hidden>Annulla</button></div></form></section>
     <div class="section-heading"><h2>Schede attive</h2></div><section class="template-grid">${activePlans.length ? activePlans.map(planCard).join("") : '<div class="empty-state">Nessuna scheda attiva. Crea la tua Lista A qui sopra.</div>'}</section>
     ${archivedPlans.length ? `<div class="section-heading"><h2>Schede archiviate</h2></div><section class="template-grid archived-grid">${archivedPlans.map(planCard).join("")}</section>` : ""}<section class="card session-card" id="session-card" hidden></section>`;
 
   const builder = document.querySelector("#exercise-builder");
+  document.querySelector("#resume-workout")?.addEventListener("click", () => resumeActiveWorkout(plans));
+  document.querySelector("#discard-workout")?.addEventListener("click", async () => {
+    if (!window.confirm("Scartare l'allenamento in corso? I dati inseriti andranno persi.")) return;
+    clearActiveWorkout();
+    showToast("Allenamento in corso scartato");
+    await renderWorkouts();
+  });
   const addRow = (exercise = null) => {
     const row = document.createElement("div");
     row.className = "exercise-builder-row";
@@ -409,15 +430,65 @@ function resetPlanForm(addRow) {
 function openSession(planId, plans) {
   const plan = plans.find((item) => item.id === planId);
   if (!plan) return;
-  const sessionCard = document.querySelector("#session-card");
-  sessionCard.hidden = false;
-  sessionCard.innerHTML = `<h2>${escapeHtml(plan.name)}</h2><p class="muted">Inserisci i dati svolti. Il volume è serie × ripetizioni × carico.</p><form id="session-form" class="stack-form"><input type="hidden" name="planId" value="${plan.id}" /><div class="field"><label for="duration">Durata (min)</label><input id="duration" name="duration" type="number" min="1" value="60" required /></div><div class="exercise-entry-list">${plan.exercises.map((exercise, index) => exerciseEntry(exercise, index)).join("")}</div><button class="button" type="submit">Salva allenamento</button></form>`;
-  sessionCard.scrollIntoView({ behavior: "smooth", block: "start" });
-  document.querySelector("#session-form").addEventListener("submit", (event) => saveSession(event, plan));
+  const existing = getActiveWorkout();
+  if (existing && existing.planId !== planId && !window.confirm("Hai già un allenamento in corso. Vuoi scartarlo e iniziarne uno nuovo?")) return;
+  const draft = existing?.planId === planId ? existing : {
+    planId: plan.id,
+    name: plan.name,
+    notes: "",
+    exercises: plan.exercises.map((exercise) => ({ exerciseId: exercise.id, name: exercise.name, sets: 3, reps: 8, load: 0 })),
+  };
+  saveActiveWorkout(draft);
+  renderActiveWorkout(plan, draft);
 }
 
-function exerciseEntry(exercise, index) {
-  return `<fieldset class="exercise-entry"><legend>${escapeHtml(exercise.name)}</legend><input type="hidden" name="exercise-id-${index}" value="${exercise.id}" /><div class="exercise-values"><div class="field"><label for="sets-${index}">Serie</label><input id="sets-${index}" name="sets-${index}" type="number" min="1" value="3" required /></div><div class="field"><label for="reps-${index}">Rip.</label><input id="reps-${index}" name="reps-${index}" type="number" min="1" value="8" required /></div><div class="field"><label for="load-${index}">Kg</label><input id="load-${index}" name="load-${index}" type="number" min="0" step="0.5" value="0" required /></div></div></fieldset>`;
+function resumeActiveWorkout(plans) {
+  const draft = getActiveWorkout();
+  if (!draft) return;
+  const plan = plans.find((item) => item.id === draft.planId) || {
+    id: draft.planId,
+    name: draft.name,
+    exercises: draft.exercises.map((exercise) => ({ id: exercise.exerciseId, name: exercise.name })),
+  };
+  renderActiveWorkout(plan, draft);
+}
+
+function renderActiveWorkout(plan, draft) {
+  const sessionCard = document.querySelector("#session-card");
+  sessionCard.hidden = false;
+  sessionCard.innerHTML = `<h2>${escapeHtml(plan.name)}</h2><p class="muted">Inserisci i dati svolti. Il volume è serie × ripetizioni × carico.</p><form id="session-form" class="stack-form"><input type="hidden" name="planId" value="${plan.id}" /><div class="exercise-entry-list">${plan.exercises.map((exercise, index) => exerciseEntry(exercise, index, draft.exercises[index])).join("")}</div><div class="field"><label for="workout-notes">Note</label><textarea id="workout-notes" name="notes" placeholder="Note sull'allenamento...">${escapeHtml(draft.notes || "")}</textarea></div><div class="form-actions"><button class="button" type="submit">Completa allenamento</button><button class="button danger" id="discard-active-workout" type="button">Scarta</button></div></form>`;
+  sessionCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  const form = document.querySelector("#session-form");
+  const persistDraft = () => saveActiveWorkout(readSessionDraft(form, plan));
+  form.addEventListener("input", persistDraft);
+  form.addEventListener("change", persistDraft);
+  form.addEventListener("submit", (event) => saveSession(event, plan));
+  document.querySelector("#discard-active-workout").addEventListener("click", async () => {
+    if (!window.confirm("Scartare l'allenamento in corso? I dati inseriti andranno persi.")) return;
+    clearActiveWorkout();
+    showToast("Allenamento in corso scartato");
+    await renderWorkouts();
+  });
+}
+
+function exerciseEntry(exercise, index, values = {}) {
+  return `<fieldset class="exercise-entry"><legend>${escapeHtml(exercise.name)}</legend><input type="hidden" name="exercise-id-${index}" value="${exercise.id}" /><div class="exercise-values"><div class="field"><label for="sets-${index}">Serie</label><input id="sets-${index}" name="sets-${index}" type="number" min="1" value="${values.sets ?? 3}" required /></div><div class="field"><label for="reps-${index}">Rip.</label><input id="reps-${index}" name="reps-${index}" type="number" min="1" value="${values.reps ?? 8}" required /></div><div class="field"><label for="load-${index}">Kg</label><input id="load-${index}" name="load-${index}" type="number" min="0" step="0.5" value="${values.load ?? 0}" required /></div></div></fieldset>`;
+}
+
+function readSessionDraft(form, plan) {
+  const data = new FormData(form);
+  return {
+    planId: plan.id,
+    name: plan.name,
+    notes: String(data.get("notes") || ""),
+    exercises: plan.exercises.map((exercise, index) => ({
+      exerciseId: exercise.id,
+      name: exercise.name,
+      sets: Number(data.get(`sets-${index}`)),
+      reps: Number(data.get(`reps-${index}`)),
+      load: Number(data.get(`load-${index}`)),
+    })),
+  };
 }
 
 async function saveSession(event, plan) {
@@ -430,7 +501,8 @@ async function saveSession(event, plan) {
     return { exerciseId: exercise.id, name: exercise.name, sets, reps, load, volume: sets * reps * load };
   });
   try {
-    await workoutStore.add({ planId: plan.id, name: plan.name, date: new Date().toISOString(), duration: Number(data.get("duration")), exercises, volume: exercises.reduce((sum, exercise) => sum + exercise.volume, 0) });
+    await workoutStore.add({ planId: plan.id, name: plan.name, date: new Date().toISOString(), duration: 1, exercises, volume: exercises.reduce((sum, exercise) => sum + exercise.volume, 0) });
+    clearActiveWorkout();
     showToast("Allenamento salvato");
     window.location.hash = "history";
   } catch (error) { showToast(error.message, true); }
@@ -446,6 +518,7 @@ async function renderHistory() {
     const filtered = workouts.filter((workout) => (type === "all" || (workout.planId || workout.name) === type) && (!month || workout.date.startsWith(month)));
     document.querySelector("#history-list").innerHTML = filtered.length ? filtered.map((workout) => workoutCard(workout, true)).join("") : '<div class="empty-state">Nessun allenamento per questi filtri.</div>';
     document.querySelectorAll("[data-remove-workout]").forEach((button) => button.addEventListener("click", async () => {
+      if (!window.confirm("Eliminare definitivamente questo allenamento? Questa azione non può essere annullata.")) return;
       try { await workoutStore.remove(button.dataset.removeWorkout); showToast("Allenamento eliminato"); await renderHistory(); } catch (error) { showToast(error.message, true); }
     }));
   };

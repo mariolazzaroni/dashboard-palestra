@@ -362,7 +362,6 @@ class SupabaseWorkoutStore {
       id: workout.id,
       planId: workout.plan_id,
       name: workout.name,
-      duration: workout.duration,
       volume: Number(workout.total_volume),
       date: workout.performed_at,
       exercises: workout.exercise_results.map((result) => ({
@@ -382,7 +381,7 @@ class SupabaseWorkoutStore {
     const userId = await getUserId();
     const { data, error } = await supabase
       .from("workouts")
-      .insert({ user_id: userId, plan_id: workout.planId, name: workout.name, duration: workout.duration, total_volume: workout.volume, performed_at: workout.date })
+      .insert({ user_id: userId, plan_id: workout.planId, name: workout.name, duration: 1, total_volume: workout.volume, performed_at: workout.date })
       .select("id")
       .single();
     throwIfError(error);

@@ -43,7 +43,9 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 ### v1.3.5 - Identita visiva PWA
 
 - Nuovo logo viola con una G geometrica centrale
-- Cornice esterna bianca per una maggiore pulizia visiva
+- Sfondo viola esteso fino al bordo dell'icona
+- Formato quadrato pieno senza maschera incorporata, compatibile con la sagoma applicata da iOS
+- Proporzioni della G ottimizzate per la schermata Home di iPhone
 - Icone PWA da 192 e 512 pixel aggiornate
 - Aggiunta icona Apple Touch dedicata per Safari e iOS
 - Aggiunte favicon nei formati PNG e ICO

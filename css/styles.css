@@ -68,8 +68,15 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: calc(100% + 36px);
   height: 76px;
-  background: linear-gradient(var(--bg) 70%, transparent);
+  margin-left: -18px;
+  padding: 0 18px;
+  border: 0;
+  background: rgb(11 12 18 / 72%);
+  box-shadow: none;
+  backdrop-filter: blur(18px) saturate(135%);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
 }
 
 .brand {
@@ -945,6 +952,12 @@ h3 {
 
 @media (min-width: 640px) {
   .app-shell {
+    padding-inline: 26px;
+  }
+
+  .topbar {
+    width: calc(100% + 52px);
+    margin-left: -26px;
     padding-inline: 26px;
   }
 

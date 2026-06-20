@@ -339,9 +339,10 @@ async function renderWorkouts() {
     row.className = "exercise-builder-row";
     row.dataset.exerciseId = exercise?.id || "";
     row.dataset.exerciseChoice = exercise?.id ? "existing" : "";
-    row.innerHTML = `<div class="field exercise-name-field"><label>Nome esercizio</label><input class="exercise-name-input" type="text" maxlength="100" autocomplete="off" value="${escapeHtml(exercise?.name || "")}" placeholder="Es. Panca piana" required /><div class="exercise-suggestions" hidden></div></div><div class="field exercise-category-field"><label>Categoria</label><select class="exercise-category-select">${EXERCISE_CATEGORIES.map((category) => `<option value="${category}" ${(exercise?.category || "Altro") === category ? "selected" : ""}>${category}</option>`).join("")}</select></div><div class="field"><label>Serie</label><input class="planned-sets-input" type="number" min="1" value="${exercise?.plannedSets || 3}" required /></div><div class="field"><label>Rip.</label><input class="planned-reps-input" type="number" min="1" value="${exercise?.plannedReps || 8}" required /></div><button class="button danger remove-exercise-row" type="button" aria-label="Rimuovi esercizio">×</button>`;
+    row.innerHTML = `<div class="exercise-order-controls" aria-label="Riordina esercizio"><button class="icon-button move-exercise-up" type="button" aria-label="Sposta esercizio su">↑</button><button class="icon-button move-exercise-down" type="button" aria-label="Sposta esercizio giù">↓</button></div><div class="field exercise-name-field"><label>Nome esercizio</label><input class="exercise-name-input" type="text" maxlength="100" autocomplete="off" value="${escapeHtml(exercise?.name || "")}" placeholder="Es. Panca piana" required /><div class="exercise-suggestions" hidden></div></div><div class="field exercise-category-field"><label>Categoria</label><select class="exercise-category-select">${EXERCISE_CATEGORIES.map((category) => `<option value="${category}" ${(exercise?.category || "Altro") === category ? "selected" : ""}>${category}</option>`).join("")}</select></div><div class="field"><label>Serie</label><input class="planned-sets-input" type="number" min="1" value="${exercise?.plannedSets || 3}" required /></div><div class="field"><label>Rip.</label><input class="planned-reps-input" type="number" min="1" value="${exercise?.plannedReps || 8}" required /></div><button class="button danger remove-exercise-row" type="button" aria-label="Rimuovi esercizio">×</button>`;
     builder.append(row);
     bindExerciseSuggestions(row, exerciseCatalog);
+    bindExerciseOrder(row);
   };
   addRow();
   document.querySelector("#add-exercise-row").addEventListener("click", () => addRow());
@@ -399,6 +400,17 @@ async function renderWorkouts() {
     if (!window.confirm(message)) return;
     try { await planStore.remove(button.dataset.deletePlan); showToast("Scheda eliminata"); await renderWorkouts(); } catch (error) { showToast(error.message, true); }
   }));
+}
+
+function bindExerciseOrder(row) {
+  row.querySelector(".move-exercise-up").addEventListener("click", () => {
+    const previous = row.previousElementSibling;
+    if (previous) row.parentElement.insertBefore(row, previous);
+  });
+  row.querySelector(".move-exercise-down").addEventListener("click", () => {
+    const next = row.nextElementSibling;
+    if (next) row.parentElement.insertBefore(next, row);
+  });
 }
 
 function bindExerciseSuggestions(row, catalog) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "gymboard-v1.6";
+const CACHE_NAME = "gymboard-v1.6-exercise-order";
 const APP_ASSETS = [
   "./",
   "./index.html",

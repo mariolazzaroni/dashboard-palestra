@@ -22,6 +22,8 @@ create table public.plan_exercises (
   id uuid primary key default gen_random_uuid(),
   plan_id uuid not null references public.plans(id) on delete cascade,
   exercise_id uuid not null references public.exercises(id) on delete restrict,
+  planned_sets integer not null default 3 check (planned_sets > 0),
+  planned_reps integer not null default 8 check (planned_reps > 0),
   position integer not null default 0,
   unique (plan_id, exercise_id)
 );

@@ -56,14 +56,21 @@ export function findExerciseMatches(exercises, value, limit = 5) {
 
 function findEquivalent(exercises, name) {
   const normalized = normalizeExerciseName(name);
-  const exact = exercises.find((exercise) => exercise.normalizedName === normalized);
-  if (exact) return exact;
-  const best = findExerciseMatches(exercises, name, 1)[0];
-  if (!best) return null;
-  const distance = editDistance(normalized, best.normalizedName);
-  const longest = Math.max(normalized.length, best.normalizedName.length);
-  const allowedDistance = longest >= 16 ? 2 : 1;
-  return distance <= allowedDistance && 1 - distance / longest >= 0.88 ? best : null;
+  return exercises.find((exercise) => exercise.normalizedName === normalized) || null;
+}
+
+function plannedValue(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+function planExerciseItem(value) {
+  if (typeof value === "string") return { exerciseId: value, plannedSets: 3, plannedReps: 8 };
+  return {
+    exerciseId: value.exerciseId,
+    plannedSets: plannedValue(value.plannedSets, 3),
+    plannedReps: plannedValue(value.plannedReps, 8),
+  };
 }
 
 class LocalStore {
@@ -140,17 +147,29 @@ class LocalPlanStore extends LocalStore {
     const plans = await this.getRaw();
     let changed = false;
     for (const plan of plans) {
-      if (plan.exerciseIds) continue;
-      const resolved = await this.exercises.resolveNames(plan.exercises || []);
-      plan.exerciseIds = resolved.map((exercise) => exercise.id);
-      delete plan.exercises;
-      changed = true;
+      if (!plan.exerciseItems) {
+        if (plan.exerciseIds) plan.exerciseItems = plan.exerciseIds.map(planExerciseItem);
+        else {
+          const resolved = await this.exercises.resolveNames(plan.exercises || []);
+          plan.exerciseItems = resolved.map((exercise) => ({ exerciseId: exercise.id, plannedSets: 3, plannedReps: 8 }));
+          delete plan.exercises;
+        }
+        delete plan.exerciseIds;
+        changed = true;
+      }
     }
     if (changed) await this.save(plans);
     const exercises = await this.exercises.getAll();
     return plans.map((plan) => ({
       ...plan,
-      exercises: plan.exerciseIds.map((id) => exercises.find((exercise) => exercise.id === id)).filter(Boolean),
+      exerciseItems: (plan.exerciseItems || []).map(planExerciseItem),
+      exercises: (plan.exerciseItems || [])
+        .map(planExerciseItem)
+        .map((item) => {
+          const exercise = exercises.find((entry) => entry.id === item.exerciseId);
+          return exercise ? { ...exercise, plannedSets: item.plannedSets, plannedReps: item.plannedReps } : null;
+        })
+        .filter(Boolean),
     }));
   }
 
@@ -245,11 +264,15 @@ function throwIfError(error) {
   if (error) throw error;
 }
 
+let supabaseExerciseCache = null;
+
 class SupabaseExerciseStore {
   async getAll() {
+    if (supabaseExerciseCache) return supabaseExerciseCache;
     const { data, error } = await supabase.from("exercises").select("id, name, normalized_name, category, created_at").order("name");
     throwIfError(error);
-    return data.map((exercise) => ({ id: exercise.id, name: exercise.name, normalizedName: exercise.normalized_name, category: exerciseCategory(exercise.category), createdAt: exercise.created_at }));
+    supabaseExerciseCache = data.map((exercise) => ({ id: exercise.id, name: exercise.name, normalizedName: exercise.normalized_name, category: exerciseCategory(exercise.category), createdAt: exercise.created_at }));
+    return supabaseExerciseCache;
   }
 
   async resolveNames(entries) {
@@ -271,6 +294,7 @@ class SupabaseExerciseStore {
         throwIfError(error);
         exercise = { id: data.id, name: data.name, normalizedName: data.normalized_name, category: exerciseCategory(data.category), createdAt: data.created_at };
         exercises.push(exercise);
+        supabaseExerciseCache = exercises;
       } else if (hasCategory && exercise.category !== category) {
         exercise = await this.updateCategory(exercise.id, category);
       }
@@ -287,7 +311,9 @@ class SupabaseExerciseStore {
       .select("id, name, normalized_name, category, created_at")
       .single();
     throwIfError(error);
-    return { id: data.id, name: data.name, normalizedName: data.normalized_name, category: exerciseCategory(data.category), createdAt: data.created_at };
+    const updated = { id: data.id, name: data.name, normalizedName: data.normalized_name, category: exerciseCategory(data.category), createdAt: data.created_at };
+    if (supabaseExerciseCache) supabaseExerciseCache = supabaseExerciseCache.map((exercise) => exercise.id === updated.id ? updated : exercise);
+    return updated;
   }
 }
 
@@ -295,7 +321,7 @@ class SupabasePlanStore {
   async getAll() {
     const { data, error } = await supabase
       .from("plans")
-      .select("id, name, created_at, archived_at, plan_exercises(position, exercise_id, exercise:exercises(id, name, normalized_name, category))")
+      .select("id, name, created_at, archived_at, plan_exercises(position, exercise_id, planned_sets, planned_reps, exercise:exercises(id, name, normalized_name, category))")
       .order("created_at", { ascending: false });
     throwIfError(error);
     return data.map((plan) => ({
@@ -303,10 +329,21 @@ class SupabasePlanStore {
       name: plan.name,
       createdAt: plan.created_at,
       archivedAt: plan.archived_at,
-      exerciseIds: [...plan.plan_exercises].sort((a, b) => a.position - b.position).map((entry) => entry.exercise_id),
+      exerciseItems: [...plan.plan_exercises].sort((a, b) => a.position - b.position).map((entry) => ({
+        exerciseId: entry.exercise_id,
+        plannedSets: plannedValue(entry.planned_sets, 3),
+        plannedReps: plannedValue(entry.planned_reps, 8),
+      })),
       exercises: [...plan.plan_exercises]
         .sort((a, b) => a.position - b.position)
-        .map((entry) => ({ id: entry.exercise.id, name: entry.exercise.name, normalizedName: entry.exercise.normalized_name, category: exerciseCategory(entry.exercise.category) })),
+        .map((entry) => ({
+          id: entry.exercise.id,
+          name: entry.exercise.name,
+          normalizedName: entry.exercise.normalized_name,
+          category: exerciseCategory(entry.exercise.category),
+          plannedSets: plannedValue(entry.planned_sets, 3),
+          plannedReps: plannedValue(entry.planned_reps, 8),
+        })),
     }));
   }
 
@@ -314,7 +351,7 @@ class SupabasePlanStore {
     const userId = await getUserId();
     const { data, error } = await supabase.from("plans").insert({ user_id: userId, name: plan.name }).select("id").single();
     throwIfError(error);
-    await this.replaceExercises(data.id, plan.exerciseIds);
+    await this.replaceExercises(data.id, plan.exerciseItems || plan.exerciseIds);
     return data;
   }
 
@@ -323,14 +360,20 @@ class SupabasePlanStore {
       const { error } = await supabase.from("plans").update({ name: changes.name }).eq("id", id);
       throwIfError(error);
     }
-    if (changes.exerciseIds) await this.replaceExercises(id, changes.exerciseIds);
+    if (changes.exerciseItems || changes.exerciseIds) await this.replaceExercises(id, changes.exerciseItems || changes.exerciseIds);
   }
 
-  async replaceExercises(planId, exerciseIds) {
+  async replaceExercises(planId, exerciseItems) {
     const { error: deleteError } = await supabase.from("plan_exercises").delete().eq("plan_id", planId);
     throwIfError(deleteError);
-    if (!exerciseIds.length) return;
-    const rows = exerciseIds.map((exerciseId, position) => ({ plan_id: planId, exercise_id: exerciseId, position }));
+    if (!exerciseItems.length) return;
+    const rows = exerciseItems.map(planExerciseItem).map((item, position) => ({
+      plan_id: planId,
+      exercise_id: item.exerciseId,
+      planned_sets: item.plannedSets,
+      planned_reps: item.plannedReps,
+      position,
+    }));
     const { error } = await supabase.from("plan_exercises").insert(rows);
     throwIfError(error);
   }

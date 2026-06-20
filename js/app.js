@@ -316,7 +316,7 @@ function planCard(plan) {
 }
 
 async function renderWorkouts() {
-  const [plans, exerciseCatalog, workouts] = await Promise.all([planStore.getAll(), exerciseStore.getAll(), getWorkouts()]);
+  const [plans, exerciseCatalog] = await Promise.all([planStore.getAll(), exerciseStore.getAll()]);
   const activePlans = plans.filter((plan) => !plan.archivedAt);
   const archivedPlans = plans.filter((plan) => plan.archivedAt);
   app.innerHTML = `
@@ -327,7 +327,7 @@ async function renderWorkouts() {
     ${archivedPlans.length ? `<div class="section-heading"><h2>Schede archiviate</h2></div><section class="template-grid archived-grid">${archivedPlans.map(planCard).join("")}</section>` : ""}<section class="card session-card" id="session-card" hidden></section>`;
 
   const builder = document.querySelector("#exercise-builder");
-  document.querySelector("#resume-workout")?.addEventListener("click", () => resumeActiveWorkout(plans, workouts));
+  document.querySelector("#resume-workout")?.addEventListener("click", async () => resumeActiveWorkout(plans, await getWorkouts()));
   document.querySelector("#discard-workout")?.addEventListener("click", async () => {
     if (!window.confirm("Scartare l'allenamento in corso? I dati inseriti andranno persi.")) return;
     clearActiveWorkout();
@@ -338,7 +338,8 @@ async function renderWorkouts() {
     const row = document.createElement("div");
     row.className = "exercise-builder-row";
     row.dataset.exerciseId = exercise?.id || "";
-    row.innerHTML = `<div class="field exercise-name-field"><label>Nome esercizio</label><input class="exercise-name-input" type="text" maxlength="100" autocomplete="off" value="${escapeHtml(exercise?.name || "")}" placeholder="Es. Panca piana" required /><div class="exercise-suggestions" hidden></div></div><div class="field exercise-category-field"><label>Categoria</label><select class="exercise-category-select">${EXERCISE_CATEGORIES.map((category) => `<option value="${category}" ${(exercise?.category || "Altro") === category ? "selected" : ""}>${category}</option>`).join("")}</select></div><button class="button danger remove-exercise-row" type="button" aria-label="Rimuovi esercizio">×</button>`;
+    row.dataset.exerciseChoice = exercise?.id ? "existing" : "";
+    row.innerHTML = `<div class="field exercise-name-field"><label>Nome esercizio</label><input class="exercise-name-input" type="text" maxlength="100" autocomplete="off" value="${escapeHtml(exercise?.name || "")}" placeholder="Es. Panca piana" required /><div class="exercise-suggestions" hidden></div></div><div class="field exercise-category-field"><label>Categoria</label><select class="exercise-category-select">${EXERCISE_CATEGORIES.map((category) => `<option value="${category}" ${(exercise?.category || "Altro") === category ? "selected" : ""}>${category}</option>`).join("")}</select></div><div class="field"><label>Serie</label><input class="planned-sets-input" type="number" min="1" value="${exercise?.plannedSets || 3}" required /></div><div class="field"><label>Rip.</label><input class="planned-reps-input" type="number" min="1" value="${exercise?.plannedReps || 8}" required /></div><button class="button danger remove-exercise-row" type="button" aria-label="Rimuovi esercizio">×</button>`;
     builder.append(row);
     bindExerciseSuggestions(row, exerciseCatalog);
   };
@@ -355,21 +356,25 @@ async function renderWorkouts() {
       for (const row of rows) {
         const name = row.querySelector(".exercise-name-input").value.trim();
         const category = row.querySelector(".exercise-category-select").value;
+        const plannedSets = Number(row.querySelector(".planned-sets-input").value);
+        const plannedReps = Number(row.querySelector(".planned-reps-input").value);
         if (!name) continue;
         let exercise = exerciseCatalog.find((item) => item.id === row.dataset.exerciseId);
+        const hasSimilarMatches = !exercise && row.dataset.exerciseChoice !== "new" && findExerciseMatches(exerciseCatalog, name).length > 0;
+        if (hasSimilarMatches) return showToast(`Scegli un suggerimento o crea un nuovo esercizio per "${name}"`, true);
         if (exercise) exercise = await exerciseStore.updateCategory(exercise.id, category);
         else [exercise] = await exerciseStore.resolveNames([{ name, category }]);
-        if (!selectedExercises.some((item) => item.id === exercise.id)) selectedExercises.push(exercise);
+        if (!selectedExercises.some((item) => item.exerciseId === exercise.id)) selectedExercises.push({ exerciseId: exercise.id, plannedSets, plannedReps });
       }
       if (!selectedExercises.length) return showToast("Aggiungi almeno un esercizio", true);
-      const changes = { name: String(data.get("name")).trim(), exerciseIds: selectedExercises.map((exercise) => exercise.id) };
+      const changes = { name: String(data.get("name")).trim(), exerciseItems: selectedExercises };
       if (data.get("planId")) await planStore.update(String(data.get("planId")), changes);
       else await planStore.add(changes);
       showToast(data.get("planId") ? "Scheda aggiornata" : "Scheda creata");
       await renderWorkouts();
     } catch (error) { showToast(error.message, true); }
   });
-  document.querySelectorAll("[data-start-plan]").forEach((button) => button.addEventListener("click", () => openSession(button.dataset.startPlan, plans, workouts)));
+  document.querySelectorAll("[data-start-plan]").forEach((button) => button.addEventListener("click", async () => openSession(button.dataset.startPlan, plans, await getWorkouts())));
   document.querySelectorAll("[data-edit-plan]").forEach((button) => button.addEventListener("click", () => {
     const plan = plans.find((item) => item.id === button.dataset.editPlan);
     document.querySelector("#plan-id").value = plan.id;
@@ -401,16 +406,27 @@ function bindExerciseSuggestions(row, catalog) {
   const suggestions = row.querySelector(".exercise-suggestions");
   input.addEventListener("input", () => {
     const selected = catalog.find((exercise) => exercise.id === row.dataset.exerciseId);
-    if (!selected || normalizeExerciseName(selected.name) !== normalizeExerciseName(input.value)) row.dataset.exerciseId = "";
+    if (!selected || normalizeExerciseName(selected.name) !== normalizeExerciseName(input.value)) {
+      row.dataset.exerciseId = "";
+      row.dataset.exerciseChoice = "";
+    }
     const matches = findExerciseMatches(catalog, input.value);
-    suggestions.innerHTML = matches.map((exercise) => `<button type="button" data-suggestion-id="${exercise.id}"><strong>${escapeHtml(exercise.name)}</strong><span>${escapeHtml(exercise.category || "Altro")} · Usa lo storico esistente</span></button>`).join("");
+    suggestions.innerHTML = `${matches.map((exercise) => `<button type="button" data-suggestion-id="${exercise.id}"><strong>${escapeHtml(exercise.name)}</strong><span>${escapeHtml(exercise.category || "Altro")} · Usa lo storico esistente</span></button>`).join("")}${matches.length ? `<button type="button" data-create-exercise="true"><strong>Crea nuovo esercizio</strong><span>Non collegare ai suggerimenti</span></button>` : ""}`;
     suggestions.hidden = !matches.length;
   });
   suggestions.addEventListener("click", (event) => {
+    const createButton = event.target.closest("[data-create-exercise]");
+    if (createButton) {
+      row.dataset.exerciseId = "";
+      row.dataset.exerciseChoice = "new";
+      suggestions.hidden = true;
+      return;
+    }
     const button = event.target.closest("[data-suggestion-id]");
     if (!button) return;
     const exercise = catalog.find((item) => item.id === button.dataset.suggestionId);
     row.dataset.exerciseId = exercise.id;
+    row.dataset.exerciseChoice = "existing";
     input.value = exercise.name;
     row.querySelector(".exercise-category-select").value = exercise.category || "Altro";
     suggestions.hidden = true;
@@ -452,8 +468,8 @@ function openSession(planId, plans, workouts) {
     exercises: plan.exercises.map((exercise) => ({
       exerciseId: exercise.id,
       name: exercise.name,
-      sets: 3,
-      reps: 8,
+      sets: exercise.plannedSets || 3,
+      reps: exercise.plannedReps || 8,
       load: "",
       previousLoad: previousLoads.get(exercise.id),
     })),

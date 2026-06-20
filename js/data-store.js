@@ -135,6 +135,41 @@ class LocalExerciseStore extends LocalStore {
     await this.save(updated);
     return updated.find((exercise) => exercise.id === id);
   }
+
+  async update(id, changes) {
+    const exercises = await this.getAll();
+    const name = String(changes.name || "").trim();
+    if (!name) throw new Error("Inserisci un nome esercizio.");
+    const normalizedName = normalizeExerciseName(name);
+    const duplicate = exercises.find((exercise) => exercise.id !== id && exercise.normalizedName === normalizedName);
+    if (duplicate) throw new Error("Esiste già un esercizio con questo nome.");
+    const updatedExercise = {
+      ...exercises.find((exercise) => exercise.id === id),
+      name,
+      normalizedName,
+      category: exerciseCategory(changes.category),
+    };
+    await this.save(exercises.map((exercise) => exercise.id === id ? updatedExercise : exercise));
+    return updatedExercise;
+  }
+
+  async remove(id) {
+    await super.remove(id);
+
+    const plans = JSON.parse(localStorage.getItem(PLANS_KEY) || "[]");
+    localStorage.setItem(PLANS_KEY, JSON.stringify(plans.map((plan) => ({
+      ...plan,
+      exerciseIds: plan.exerciseIds?.filter((exerciseId) => exerciseId !== id),
+      exerciseItems: plan.exerciseItems?.filter((item) => planExerciseItem(item).exerciseId !== id),
+      exercises: Array.isArray(plan.exercises) ? plan.exercises.filter((name) => name !== id) : plan.exercises,
+    }))));
+
+    const workouts = JSON.parse(localStorage.getItem(WORKOUTS_KEY) || "[]");
+    localStorage.setItem(WORKOUTS_KEY, JSON.stringify(workouts.map((workout) => {
+      const exercises = (workout.exercises || []).filter((exercise) => exercise.exerciseId !== id);
+      return { ...workout, exercises, volume: exercises.reduce((sum, exercise) => sum + Number(exercise.volume || 0), 0) };
+    })));
+  }
 }
 
 class LocalPlanStore extends LocalStore {
@@ -314,6 +349,51 @@ class SupabaseExerciseStore {
     const updated = { id: data.id, name: data.name, normalizedName: data.normalized_name, category: exerciseCategory(data.category), createdAt: data.created_at };
     if (supabaseExerciseCache) supabaseExerciseCache = supabaseExerciseCache.map((exercise) => exercise.id === updated.id ? updated : exercise);
     return updated;
+  }
+
+  async update(id, changes) {
+    const name = String(changes.name || "").trim();
+    if (!name) throw new Error("Inserisci un nome esercizio.");
+    const { data, error } = await supabase
+      .from("exercises")
+      .update({ name, normalized_name: normalizeExerciseName(name), category: exerciseCategory(changes.category) })
+      .eq("id", id)
+      .select("id, name, normalized_name, category, created_at")
+      .single();
+    throwIfError(error);
+    const updated = { id: data.id, name: data.name, normalizedName: data.normalized_name, category: exerciseCategory(data.category), createdAt: data.created_at };
+    if (supabaseExerciseCache) supabaseExerciseCache = supabaseExerciseCache.map((exercise) => exercise.id === updated.id ? updated : exercise);
+    return updated;
+  }
+
+  async remove(id) {
+    const { data: resultRows, error: resultError } = await supabase
+      .from("exercise_results")
+      .select("workout_id, volume")
+      .eq("exercise_id", id);
+    throwIfError(resultError);
+
+    const { error } = await supabase.from("exercises").delete().eq("id", id);
+    throwIfError(error);
+    if (supabaseExerciseCache) supabaseExerciseCache = supabaseExerciseCache.filter((exercise) => exercise.id !== id);
+
+    const removedVolumeByWorkout = (resultRows || []).reduce((map, result) => {
+      map.set(result.workout_id, (map.get(result.workout_id) || 0) + Number(result.volume || 0));
+      return map;
+    }, new Map());
+    if (!removedVolumeByWorkout.size) return;
+
+    const workoutIds = [...removedVolumeByWorkout.keys()];
+    const { data: workouts, error: workoutsError } = await supabase
+      .from("workouts")
+      .select("id, total_volume")
+      .in("id", workoutIds);
+    throwIfError(workoutsError);
+
+    await Promise.all((workouts || []).map((workout) => {
+      const totalVolume = Math.max(0, Number(workout.total_volume || 0) - removedVolumeByWorkout.get(workout.id));
+      return supabase.from("workouts").update({ total_volume: totalVolume }).eq("id", workout.id).then(({ error: updateError }) => throwIfError(updateError));
+    }));
   }
 }
 

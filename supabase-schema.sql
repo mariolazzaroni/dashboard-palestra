@@ -21,7 +21,7 @@ create table public.plans (
 create table public.plan_exercises (
   id uuid primary key default gen_random_uuid(),
   plan_id uuid not null references public.plans(id) on delete cascade,
-  exercise_id uuid not null references public.exercises(id) on delete restrict,
+  exercise_id uuid not null references public.exercises(id) on delete cascade,
   planned_sets integer not null default 3 check (planned_sets > 0),
   planned_reps integer not null default 8 check (planned_reps > 0),
   position integer not null default 0,
@@ -41,7 +41,7 @@ create table public.workouts (
 create table public.exercise_results (
   id uuid primary key default gen_random_uuid(),
   workout_id uuid not null references public.workouts(id) on delete cascade,
-  exercise_id uuid not null references public.exercises(id) on delete restrict,
+  exercise_id uuid not null references public.exercises(id) on delete cascade,
   exercise_name text,
   sets integer not null check (sets > 0),
   reps integer not null check (reps > 0),

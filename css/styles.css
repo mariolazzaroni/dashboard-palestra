@@ -901,6 +901,36 @@ h3 {
   color: var(--accent);
 }
 
+.exercise-manager-list {
+  display: grid;
+  gap: 12px;
+}
+
+.exercise-manager-card {
+  display: grid;
+  gap: 16px;
+}
+
+.exercise-manager-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.exercise-manager-stats span {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.exercise-edit-form {
+  width: 100%;
+}
+
 .bottom-nav {
   position: fixed;
   z-index: 20;
@@ -908,7 +938,7 @@ h3 {
   bottom: max(16px, env(safe-area-inset-bottom));
   left: max(16px, calc((100vw - 710px) / 2));
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   padding: 7px;
   border: 1px solid var(--line);
   border-radius: 32px;
@@ -924,7 +954,7 @@ h3 {
   place-content: center;
   border-radius: 25px;
   color: var(--muted);
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   font-weight: 700;
   text-align: center;
   text-decoration: none;

@@ -1,6 +1,6 @@
 # GymBoard
 
-**Current Version: v1.5**
+**Current Version: v1.6**
 
 GymBoard e una Progressive Web App mobile-first per creare schede personalizzate, registrare gli allenamenti e monitorare i progressi in palestra. E realizzata con HTML, CSS e JavaScript vanilla, pubblicabile su GitHub Pages e collegata a Supabase per autenticazione e sincronizzazione cloud.
 
@@ -11,6 +11,7 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 - Catalogo esercizi condiviso con identità stabile
 - Categorie semplici per organizzare gli esercizi e preparare analisi future
 - Serie e ripetizioni previste salvate nelle schede
+- Sezione Esercizi per consultare e gestire il catalogo personale
 - Suggerimenti automatici durante creazione e modifica delle schede
 - Riconoscimento di nomi equivalenti per evitare esercizi duplicati
 - Esercizi scelti dall'utente con serie, ripetizioni e carico
@@ -58,6 +59,15 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 - Supporto a conoscenze scientifiche e linee guida
 
 ## Changelog
+
+### v1.6 - Gestione catalogo esercizi
+
+- Aggiunta sezione Esercizi
+- Visualizzazione di nome, categoria, data di creazione e statistiche d'uso
+- Modifica di nome e categoria mantenendo lo stesso `exercise_id`
+- Eliminazione esercizi con conferma
+- Rimozione dei riferimenti collegati da schede e storico
+- Migrazione Supabase per mantenere l'integrità dei riferimenti
 
 ### v1.5 - Schede più utilizzabili
 
@@ -201,6 +211,7 @@ Tutti i percorsi sono relativi, quindi l'app funziona anche all'indirizzo `https
 ├── supabase-migration-v1.0.sql # Migrazione dei progetti v0.1
 ├── supabase-migration-v1.4.sql # Aggiunta categorie agli esercizi
 ├── supabase-migration-v1.5.sql # Serie e ripetizioni previste nelle schede
+├── supabase-migration-v1.6.sql # Eliminazione sicura degli esercizi
 └── sw.js                # Cache e funzionamento offline
 ```
 
@@ -258,6 +269,18 @@ Prima di pubblicare il codice v1.5 su GitHub Pages:
 5. Pubblica i file della dashboard v1.5.
 
 La migrazione aggiunge serie e ripetizioni previste al collegamento tra scheda ed esercizio. Gli esercizi esistenti ricevono il default `3 x 8`. Non modifica lo storico allenamenti.
+
+### Aggiornamento a v1.6
+
+Prima di pubblicare il codice v1.6 su GitHub Pages:
+
+1. Esegui un backup del database Supabase.
+2. Apri **SQL Editor** nel progetto esistente.
+3. Esegui una sola volta `supabase-migration-v1.6.sql`.
+4. Verifica che le foreign key di `plan_exercises.exercise_id` e `exercise_results.exercise_id` usino `ON DELETE CASCADE`.
+5. Pubblica i file della dashboard v1.6.
+
+La migrazione permette di eliminare un esercizio rimuovendo automaticamente i riferimenti collegati nelle schede e nei risultati allenamento, evitando record orfani.
 
 Se la conferma email è abilitata, il primo accesso richiede il link ricevuto via email. Il nome viene salvato durante la registrazione in `user_metadata.full_name` e mostrato nella Home dopo l'accesso.
 

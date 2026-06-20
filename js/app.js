@@ -594,6 +594,85 @@ function getExercisePoints(workouts, exerciseId, metric) {
   });
 }
 
+function exerciseManagementCard(exercise, stats) {
+  const createdAt = exercise.createdAt
+    ? formatDate(exercise.createdAt, { day: "2-digit", month: "long", year: "numeric" })
+    : "Non disponibile";
+  return `
+    <article class="card exercise-manager-card" data-exercise-card="${exercise.id}">
+      <div>
+        <div class="plan-title">
+          <h3>${escapeHtml(exercise.name)}</h3>
+          <span class="status-badge">${escapeHtml(exercise.category || "Altro")}</span>
+        </div>
+        <p class="workout-meta">Creato: ${escapeHtml(createdAt)}</p>
+        <div class="exercise-manager-stats">
+          <span>${stats.planCount} schede</span>
+          <span>${stats.workoutCount} allenamenti</span>
+        </div>
+      </div>
+      <div class="card-actions">
+        <button class="button secondary" data-edit-exercise="${exercise.id}">Modifica</button>
+        <button class="button danger" data-delete-exercise="${exercise.id}">Elimina</button>
+      </div>
+    </article>`;
+}
+
+async function renderExercises() {
+  const [exercises, plans, workouts] = await Promise.all([exerciseStore.getAll(), planStore.getAll(), getWorkouts()]);
+  const stats = new Map(exercises.map((exercise) => [exercise.id, { planCount: 0, workoutCount: 0 }]));
+
+  plans.forEach((plan) => {
+    const ids = new Set((plan.exercises || []).map((exercise) => exercise.id));
+    ids.forEach((id) => {
+      if (stats.has(id)) stats.get(id).planCount += 1;
+    });
+  });
+
+  workouts.forEach((workout) => {
+    const ids = new Set((workout.exercises || []).map((exercise) => exercise.exerciseId));
+    ids.forEach((id) => {
+      if (stats.has(id)) stats.get(id).workoutCount += 1;
+    });
+  });
+
+  app.innerHTML = `
+    <section class="page-header"><div><p class="eyebrow">Catalogo</p><h1>Esercizi.</h1><p class="muted">Gestisci nome e categoria senza perdere lo storico collegato.</p></div></section>
+    <section class="exercise-manager-list">
+      ${exercises.length ? exercises.map((exercise) => exerciseManagementCard(exercise, stats.get(exercise.id))).join("") : '<div class="empty-state">Nessun esercizio salvato. Crea una scheda per iniziare.</div>'}
+    </section>`;
+
+  document.querySelectorAll("[data-edit-exercise]").forEach((button) => button.addEventListener("click", () => {
+    const exercise = exercises.find((item) => item.id === button.dataset.editExercise);
+    const card = document.querySelector(`[data-exercise-card="${exercise.id}"]`);
+    card.innerHTML = `
+      <form class="stack-form exercise-edit-form" data-exercise-form="${exercise.id}">
+        <div class="field"><label>Nome</label><input name="name" maxlength="100" value="${escapeHtml(exercise.name)}" required /></div>
+        <div class="field"><label>Categoria</label><select name="category">${EXERCISE_CATEGORIES.map((category) => `<option value="${category}" ${(exercise.category || "Altro") === category ? "selected" : ""}>${category}</option>`).join("")}</select></div>
+        <div class="form-actions"><button class="button" type="submit">Salva modifiche</button><button class="button secondary" type="button" data-cancel-exercise-edit>Annulla</button></div>
+      </form>`;
+    card.querySelector("[data-cancel-exercise-edit]").addEventListener("click", renderExercises);
+    card.querySelector("form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(event.currentTarget);
+      try {
+        await exerciseStore.update(exercise.id, { name: data.get("name"), category: data.get("category") });
+        showToast("Esercizio aggiornato");
+        await renderExercises();
+      } catch (error) { showToast(error.message, true); }
+    });
+  }));
+
+  document.querySelectorAll("[data-delete-exercise]").forEach((button) => button.addEventListener("click", async () => {
+    if (!window.confirm("Eliminare definitivamente questo esercizio? Verranno rimossi anche tutti i riferimenti collegati. Questa operazione non può essere annullata.")) return;
+    try {
+      await exerciseStore.remove(button.dataset.deleteExercise);
+      showToast("Esercizio eliminato");
+      await renderExercises();
+    } catch (error) { showToast(error.message, true); }
+  }));
+}
+
 function lineChart(points, metric, options = {}) {
   if (!points.length) return `<div class="empty-state">${options.emptyMessage || "Nessun dato disponibile."}</div>`;
   const width = 620, height = 260;
@@ -634,7 +713,7 @@ async function renderProgress() {
   updateChart();
 }
 
-const routes = { home: renderHome, workouts: renderWorkouts, history: renderHistory, progress: renderProgress };
+const routes = { home: renderHome, workouts: renderWorkouts, exercises: renderExercises, history: renderHistory, progress: renderProgress };
 
 async function router() {
   if (isSupabaseConfigured && !currentUser) return renderAuth();

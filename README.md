@@ -1,6 +1,6 @@
 # GymBoard
 
-**Current Version: v1.6**
+**Current Version: v1.6.2**
 
 GymBoard e una Progressive Web App mobile-first per creare schede personalizzate, registrare gli allenamenti e monitorare i progressi in palestra. E realizzata con HTML, CSS e JavaScript vanilla, pubblicabile su GitHub Pages e collegata a Supabase per autenticazione e sincronizzazione cloud.
 
@@ -59,6 +59,12 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 - Supporto a conoscenze scientifiche e linee guida
 
 ## Changelog
+
+### v1.6.2 - Reset form schede
+
+- Migliorato il reset del form di creazione schede.
+- Rimossi valori predefiniti indesiderati da Serie e Ripetizioni.
+- Migliorata la gestione dei dati precompilati tra creazione, modifica e allenamento.
 
 ### v1.6 - Gestione catalogo esercizi
 

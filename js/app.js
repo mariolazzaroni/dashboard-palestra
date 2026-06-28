@@ -1,6 +1,8 @@
 import { bodyWeightStore, EXERCISE_CATEGORIES, exerciseStore, findExerciseMatches, normalizeExerciseName, planStore, workoutStore } from "./data-store.js";
 import { isRememberSessionEnabled, setRememberSession } from "./auth-storage.js";
 import { isSupabaseConfigured, supabase, supabaseInitializationError } from "./supabase-client.js";
+import { buildWeeklyReport } from "./report-utils.js";
+import { exerciseExecutions, exerciseProgressSummary, loadProgressionPoints, trackedExercisesFromHistory } from "./exercise-progress-utils.js";
 
 const app = document.querySelector("#app");
 const toast = document.querySelector("#toast");
@@ -263,6 +265,48 @@ function bindStatSelect(id, onChange) {
   });
 }
 
+function openChoiceModal({ title, items, getLabel, getDescription, onSelect }) {
+  const modal = document.createElement("div");
+  modal.className = "choice-modal";
+  modal.innerHTML = `
+    <div class="choice-modal-backdrop" data-choice-close></div>
+    <section class="choice-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <div class="choice-sheet-header">
+        <div><p class="eyebrow">Selezione</p><h2>${escapeHtml(title)}</h2></div>
+        <button class="icon-button" type="button" data-choice-close aria-label="Chiudi">×</button>
+      </div>
+      <div class="field choice-search"><label for="choice-search-input">Cerca</label><input id="choice-search-input" type="text" autocomplete="off" placeholder="Scrivi per filtrare..." /></div>
+      <div class="choice-list"></div>
+    </section>`;
+  document.body.append(modal);
+  requestAnimationFrame(() => modal.classList.add("visible"));
+
+  const input = modal.querySelector("#choice-search-input");
+  const list = modal.querySelector(".choice-list");
+  const close = () => {
+    modal.classList.remove("visible");
+    window.setTimeout(() => modal.remove(), 180);
+  };
+  const renderItems = () => {
+    const query = input.value.trim().toLowerCase();
+    const filtered = items.filter((item) => getLabel(item).toLowerCase().includes(query) || getDescription(item).toLowerCase().includes(query));
+    list.innerHTML = filtered.length
+      ? filtered.map((item, index) => `<button class="choice-item" type="button" data-choice-index="${index}"><strong>${escapeHtml(getLabel(item))}</strong><span>${escapeHtml(getDescription(item))}</span></button>`).join("")
+      : '<div class="empty-state">Nessun risultato.</div>';
+    list.querySelectorAll("[data-choice-index]").forEach((button) => button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onSelect(filtered[Number(button.dataset.choiceIndex)]);
+      close();
+    }));
+  };
+
+  modal.querySelectorAll("[data-choice-close]").forEach((button) => button.addEventListener("click", close));
+  input.addEventListener("input", renderItems);
+  renderItems();
+  input.focus();
+}
+
 async function renderHome() {
   const [workouts, bodyWeights] = await Promise.all([getWorkouts(), getBodyWeights()]);
   const latestWeight = bodyWeights[0];
@@ -279,7 +323,18 @@ async function renderHome() {
   ])].sort((a, b) => b - a);
   app.innerHTML = `
     <section class="page-header"><div><p class="eyebrow">Il tuo diario</p><h1>Ciao, ${escapeHtml(displayName())}.</h1><p class="last-weight">${latestWeight ? `Ultimo peso: <strong>${formatNumber(latestWeight.weight)} kg</strong>, registrato il ${formatDate(`${latestWeight.date}T12:00:00`, { day: "numeric", month: "long", year: "numeric" })}.` : "Non hai ancora registrato il peso corporeo."}</p></div></section>
-    ${recordedToday ? "" : `<section class="weight-reminder" role="alert"><div><p class="eyebrow">Promemoria di oggi</p><h2>Registra il tuo peso</h2><p>${latestWeight ? "L'ultima misurazione non è di oggi." : "Inizia a costruire il tuo andamento corporeo."}</p></div><a class="button" href="#progress">Aggiungi peso</a></section>`}
+    ${recordedToday ? "" : `<section class="weight-reminder" role="alert"><div><p class="eyebrow">Promemoria di oggi</p><h2>Registra il tuo peso</h2><p>${latestWeight ? "L'ultima misurazione non è di oggi." : "Inizia a costruire il tuo andamento corporeo."}</p></div></section>`}
+    <section class="card body-weight-card">
+      <div class="weight-heading">
+        <div><p class="eyebrow">Peso corporeo</p><h2>${recordedToday ? "Peso di oggi registrato" : "Registra il peso di oggi"}</h2></div>
+        ${latestWeight ? `<strong>${formatNumber(latestWeight.weight)} kg</strong>` : ""}
+      </div>
+      <p class="last-weight">${latestWeight ? `Ultima registrazione: ${formatDate(`${latestWeight.date}T12:00:00`, { day: "numeric", month: "long", year: "numeric" })}.` : "Non hai ancora registrato il peso corporeo."}</p>
+      <form id="home-weight-form" class="weight-form">
+        <div class="field"><label for="home-body-weight">Peso (kg)</label><input id="home-body-weight" name="weight" type="number" min="20" max="400" step="0.1" required /></div>
+        <button class="button" type="submit">${recordedToday ? "Aggiorna peso di oggi" : "Salva peso di oggi"}</button>
+      </form>
+    </section>
     <section class="hero"><p class="eyebrow">La tua routine</p><h2>Costruisci, registra, migliora.</h2><p>Crea le schede A/B, inserisci i carichi per ogni esercizio e segui i progressi nel tempo.</p><a class="button" href="#workouts">Gestisci schede</a></section>
     <section class="stats-summary" aria-label="Riepilogo allenamenti">
       <div class="stats-controls">
@@ -306,6 +361,15 @@ async function renderHome() {
   bindStatSelect("stats-month", () => renderHomeStats(workouts));
   bindStatSelect("stats-year", () => renderHomeStats(workouts));
   renderHomeStats(workouts);
+  document.querySelector("#home-weight-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    try {
+      await bodyWeightStore.upsertByDate({ date: localDateKey(), weight: Number(data.get("weight")) });
+      showToast(recordedToday ? "Peso di oggi aggiornato" : "Peso di oggi registrato");
+      await renderHome();
+    } catch (error) { showToast(error.message, true); }
+  });
 }
 
 function planCard(plan) {
@@ -590,24 +654,6 @@ async function renderHistory() {
   updateList();
 }
 
-function getTrackedExercises(workouts) {
-  const exercises = new Map();
-  workouts.forEach((workout) => {
-    workout.exercises?.forEach((exercise) => {
-      const key = exercise.exerciseId || normalizeExerciseName(exercise.name);
-      if (!exercises.has(key)) exercises.set(key, { id: key, name: exercise.name });
-    });
-  });
-  return [...exercises.values()].sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function getExercisePoints(workouts, exerciseId, metric) {
-  return [...workouts].reverse().flatMap((workout) => {
-    const exercise = workout.exercises?.find((item) => (item.exerciseId || normalizeExerciseName(item.name)) === exerciseId);
-    return exercise ? [{ date: workout.date, value: exercise[metric] }] : [];
-  });
-}
-
 function exerciseManagementCard(exercise, stats) {
   const createdAt = exercise.createdAt
     ? formatDate(exercise.createdAt, { day: "2-digit", month: "long", year: "numeric" })
@@ -689,8 +735,8 @@ async function renderExercises() {
 
 function lineChart(points, metric, options = {}) {
   if (!points.length) return `<div class="empty-state">${options.emptyMessage || "Nessun dato disponibile."}</div>`;
-  const width = 620, height = 260;
-  const padding = { top: 25, right: 20, bottom: 45, left: 55 };
+  const width = 620, height = 280;
+  const padding = { top: 34, right: 28, bottom: 34, left: 54 };
   const chartWidth = width - padding.left - padding.right, chartHeight = height - padding.top - padding.bottom;
   const values = points.map((point) => point.value), dataMax = Math.max(...values), dataMin = Math.min(...values);
   const min = options.adaptiveScale ? Math.max(0, Math.floor(dataMin - 2)) : 0;
@@ -699,40 +745,169 @@ function lineChart(points, metric, options = {}) {
   const y = (value) => padding.top + chartHeight - ((value - min) / range) * chartHeight;
   const coordinates = points.map((point, index) => `${x(index)},${y(point.value)}`).join(" ");
   const unit = metric === "volume" ? "kg vol." : "kg";
-  return `<div class="xy-chart-wrap"><svg class="xy-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Andamento ${unit}"><line class="axis" x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${padding.top + chartHeight}" /><line class="axis" x1="${padding.left}" y1="${padding.top + chartHeight}" x2="${width - padding.right}" y2="${padding.top + chartHeight}" />${[0, 0.5, 1].map((ratio) => { const value = min + range * ratio; return `<g><line class="grid-line" x1="${padding.left}" y1="${y(value)}" x2="${width - padding.right}" y2="${y(value)}" /><text class="axis-label" x="${padding.left - 10}" y="${y(value) + 4}" text-anchor="end">${formatNumber(value)}</text></g>`; }).join("")}<polyline class="progress-line" points="${coordinates}" />${points.map((point, index) => `<g><circle class="progress-point" cx="${x(index)}" cy="${y(point.value)}" r="5" /><text class="point-value" x="${x(index)}" y="${y(point.value) - 11}" text-anchor="middle">${formatNumber(point.value)}</text><text class="axis-label" x="${x(index)}" y="${height - 17}" text-anchor="middle">${formatDate(point.date, { day: "2-digit", month: "2-digit" })}</text></g>`).join("")}</svg></div>`;
+  const gridRatios = [0, 0.25, 0.5, 0.75, 1];
+  const gradientId = `chartLineGradient-${metric}-${points.length}-${Math.round(dataMin * 10)}-${Math.round(dataMax * 10)}`;
+  const tooltip = (point) => point.tooltip || `${formatDate(point.date, { day: "2-digit", month: "long", year: "numeric" })} · ${formatNumber(point.value)} ${unit}`;
+  return `<div class="xy-chart-wrap"><svg class="xy-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Andamento ${unit}">
+    <defs>
+      <linearGradient id="${gradientId}" x1="0" x2="1" y1="0" y2="0">
+        <stop offset="0%" stop-color="#a7a0ff" />
+        <stop offset="100%" stop-color="#7c73ff" />
+      </linearGradient>
+    </defs>
+    <rect class="chart-panel" x="${padding.left}" y="${padding.top}" width="${chartWidth}" height="${chartHeight}" rx="18" />
+    ${gridRatios.map((ratio) => { const value = min + range * ratio; return `<g><line class="grid-line" x1="${padding.left}" y1="${y(value)}" x2="${width - padding.right}" y2="${y(value)}" /><text class="axis-label" x="${padding.left - 12}" y="${y(value) + 4}" text-anchor="end">${formatNumber(value)}</text></g>`; }).join("")}
+    <line class="axis" x1="${padding.left}" y1="${padding.top + chartHeight}" x2="${width - padding.right}" y2="${padding.top + chartHeight}" />
+    ${points.length > 1 ? `<polyline class="progress-line" points="${coordinates}" />` : ""}
+    ${points.length === 1 ? `<circle class="single-progress-marker" cx="${x(0)}" cy="${y(points[0].value)}" r="5"><title>${escapeHtml(tooltip(points[0]))}</title></circle>` : ""}
+    ${points.map((point, index) => `<circle class="chart-hit-point" cx="${x(index)}" cy="${y(point.value)}" r="16" tabindex="0"><title>${escapeHtml(tooltip(point))}</title></circle>`).join("")}
+  </svg></div>`;
+}
+
+const EXERCISE_PERIODS = {
+  month: { label: "Ultimo mese", days: 30 },
+  year: { label: "Ultimo anno", days: 365 },
+  all: { label: "Tutto", days: null },
+};
+
+function filterExecutionsByPeriod(executions, period) {
+  const config = EXERCISE_PERIODS[period] || EXERCISE_PERIODS.year;
+  if (!config.days) return executions;
+  const from = new Date();
+  from.setHours(0, 0, 0, 0);
+  from.setDate(from.getDate() - config.days);
+  return executions.filter((execution) => new Date(execution.date) >= from);
 }
 
 async function renderProgress() {
   const [workouts, bodyWeights] = await Promise.all([getWorkouts(), getBodyWeights()]);
-  const trackedExercises = getTrackedExercises(workouts);
-  app.innerHTML = `<section class="page-header"><div><p class="eyebrow">Progressi</p><h1>Un esercizio alla volta.</h1></div></section><section class="card body-weight-card"><div class="weight-heading"><div><p class="eyebrow">Peso corporeo</p><h2>Registra il peso di oggi</h2></div>${bodyWeights[0] ? `<strong>${formatNumber(bodyWeights[0].weight)} kg</strong>` : ""}</div><form id="body-weight-form" class="weight-form"><div class="field"><label for="body-weight">Peso (kg)</label><input id="body-weight" name="weight" type="number" min="20" max="400" step="0.1" required /></div><button class="button" type="submit">Salva peso di oggi</button></form><div>${lineChart([...bodyWeights].reverse().map((entry) => ({ date: `${entry.date}T12:00:00`, value: entry.weight })), "bodyWeight", { adaptiveScale: true, emptyMessage: "Registra il primo peso per creare il grafico." })}</div></section><div class="section-heading"><h2>Progressi esercizi</h2></div><p class="muted">I dati dello stesso esercizio sono aggregati da tutte le schede, comprese quelle archiviate.</p>${trackedExercises.length ? `<div class="filters"><div class="field"><label for="exercise-filter">Esercizio</label><select id="exercise-filter">${trackedExercises.map((exercise) => `<option value="${escapeHtml(exercise.id)}">${escapeHtml(exercise.name)}</option>`).join("")}</select></div><div class="field"><label for="metric-filter">Metrica</label><select id="metric-filter"><option value="load">Carico (kg)</option><option value="volume">Volume</option></select></div></div><section class="card chart-card"><div id="exercise-chart"></div></section><section class="stats-grid" id="exercise-stats"></section>` : '<div class="empty-state">Registra almeno un allenamento per vedere i grafici.</div>'}`;
-  document.querySelector("#body-weight-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const today = localDateKey();
-    const alreadyRecordedToday = bodyWeights.some((entry) => entry.date === today);
-    try { await bodyWeightStore.upsertByDate({ date: today, weight: Number(data.get("weight")) }); showToast(alreadyRecordedToday ? "Peso di oggi aggiornato" : "Peso di oggi registrato"); await renderProgress(); } catch (error) { showToast(error.message, true); }
-  });
-  if (!trackedExercises.length) return;
-  const updateChart = () => {
-    const exerciseId = document.querySelector("#exercise-filter").value, metric = document.querySelector("#metric-filter").value;
-    const exercise = trackedExercises.find((item) => item.id === exerciseId);
-    const points = getExercisePoints(workouts, exerciseId, metric), values = points.map((point) => point.value);
-    const latest = values.at(-1) || 0, best = Math.max(...values, 0), change = values.length > 1 ? latest - values[0] : 0;
-    document.querySelector("#exercise-chart").innerHTML = `<h2>${escapeHtml(exercise.name)}</h2>${lineChart(points, metric)}`;
-    document.querySelector("#exercise-stats").innerHTML = `<article class="stat-card"><strong>${formatNumber(latest)}</strong><span>Ultimo valore</span></article><article class="stat-card"><strong>${formatNumber(best)}</strong><span>Record</span></article><article class="stat-card"><strong>${change >= 0 ? "+" : ""}${formatNumber(change)}</strong><span>Variazione</span></article>`;
-  };
-  document.querySelector("#exercise-filter").addEventListener("change", updateChart);
-  document.querySelector("#metric-filter").addEventListener("change", updateChart);
-  updateChart();
+  const report = buildWeeklyReport(workouts, bodyWeights);
+  const progressParams = new URLSearchParams(window.location.hash.split("?")[1] || "");
+  const selectedId = progressParams.get("exercise");
+  const selectedPeriod = EXERCISE_PERIODS[progressParams.get("period")] ? progressParams.get("period") : "year";
+  const exercises = trackedExercisesFromHistory(workouts);
+  const selected = selectedId ? exercises.find((exercise) => exercise.id === selectedId) : null;
+  const categories = Object.entries(report.comparison.volumeByCategory).sort((a, b) => b[1].current - a[1].current);
+  const weightTrend = report.rollingWeightTrend52Weeks.filter((point) => point.averageWeight !== null);
+  const weekEnd = new Date(report.currentWeekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const weightDelta = report.comparison.averageWeightDelta;
+  const weightPercent = report.comparison.averageWeightDeltaPercent;
+  const volumeDelta = report.comparison.volumeDelta;
+  const volumePercent = report.comparison.volumeDeltaPercent;
+  const currentWeekWorkouts = workouts.filter((workout) => {
+    const date = new Date(workout.date);
+    return date >= report.currentWeekStart && date <= weekEnd;
+  }).length;
+  const previousWeekEnd = new Date(report.previousWeekStart);
+  previousWeekEnd.setDate(previousWeekEnd.getDate() + 6);
+  const previousWeekWorkouts = workouts.filter((workout) => {
+    const date = new Date(workout.date);
+    return date >= report.previousWeekStart && date <= previousWeekEnd;
+  }).length;
+  const workoutPercent = previousWeekWorkouts ? ((currentWeekWorkouts - previousWeekWorkouts) / previousWeekWorkouts) * 100 : null;
+
+  app.innerHTML = `<section class="page-header"><div><p class="eyebrow">Progressi</p><h1>Statistiche.</h1><p class="muted">Settimana ${report.weekNumber}: dal ${formatDate(report.currentWeekStart, { day: "2-digit", month: "long" })} al ${formatDate(weekEnd, { day: "2-digit", month: "long", year: "numeric" })}.</p></div></section>
+    <section class="report-grid">
+      <article class="stat-card report-card"><strong>${report.current.averageWeight === null ? "n/d" : `${formatNumber(report.current.averageWeight)} kg`}</strong><span>${weightPercent === null ? "Media peso settimanale" : `${weightPercent >= 0 ? "+" : ""}${formatNumber(weightPercent)}% peso vs settimana precedente`}</span></article>
+      <article class="stat-card report-card"><strong>${currentWeekWorkouts}</strong><span>${workoutPercent === null ? "Allenamenti completati" : `${workoutPercent >= 0 ? "+" : ""}${formatNumber(workoutPercent)}% allenamenti vs settimana precedente`}</span></article>
+      <article class="stat-card report-card"><strong>${formatNumber(report.current.totalVolume)} kg</strong><span>${volumePercent >= 0 ? "+" : ""}${formatNumber(volumePercent)}% volume vs settimana precedente</span></article>
+      <article class="stat-card report-card"><strong>${volumeDelta >= 0 ? "+" : ""}${formatNumber(volumeDelta)} kg</strong><span>Variazione volume totale</span></article>
+    </section>
+    <section class="card report-section"><div class="section-heading"><h2>Trend peso rolling 52 settimane</h2></div>${weightTrend.length ? lineChart(weightTrend.map((point) => ({ date: point.weekStart, value: point.averageWeight })), "bodyWeight", { adaptiveScale: true, emptyMessage: "Registra il peso per creare il trend." }) : '<div class="empty-state">Nessun dato peso disponibile per il trend.</div>'}</section>
+    <section class="card report-section"><div class="section-heading"><h2>Gruppi muscolari</h2></div>${categories.length ? `<div class="progress-list category-report-list">${categories.map(([category, values]) => { const label = values.deltaPercent === null ? (values.isNew ? "Nuovo" : "--") : `${values.deltaPercent >= 0 ? "+" : ""}${formatNumber(values.deltaPercent)}%`; return `<details class="category-detail"><summary><span>${escapeHtml(category)}</span><strong>${label}</strong></summary><div class="category-detail-body"><p><span>Volume settimana corrente</span><strong>${formatNumber(values.current)} kg</strong></p><p><span>Volume settimana precedente</span><strong>${formatNumber(values.previous)} kg</strong></p><p><span>Variazione</span><strong>${label}</strong></p></div></details>`; }).join("")}</div>` : '<div class="empty-state">Nessun volume registrato nella settimana corrente.</div>'}</section>
+    <section class="card report-section" id="exercise-evolution-card"><div class="section-heading"><h2>Evoluzione esercizi</h2></div>${selected ? exerciseProgressDetail(selected, workouts, selectedPeriod) : exerciseProgressSearch()}</section>`;
+  if (selected) bindExercisePeriodFilters(selected, workouts);
+  else bindExerciseProgressSearch(exercises, workouts);
 }
 
-const routes = { home: renderHome, workouts: renderWorkouts, exercises: renderExercises, history: renderHistory, progress: renderProgress };
+function exerciseProgressSearch() {
+  return `
+    <p class="muted">Scegli un esercizio presente nello storico per vedere grafico, record e cronologia.</p>
+    <div class="field exercise-progress-search">
+      <label>Esercizio</label>
+      <button class="toggle-select-trigger exercise-picker-trigger" id="exercise-progress-picker" type="button"><span>Seleziona esercizio</span><b aria-hidden="true">⌄</b></button>
+    </div>
+    <div class="empty-state">Seleziona un esercizio per vedere grafico, record e storico.</div>`;
+}
+
+function bindExerciseProgressSearch(exercises, workouts) {
+  const trigger = document.querySelector("#exercise-progress-picker");
+  if (!trigger) return;
+  trigger.addEventListener("click", () => {
+    openChoiceModal({
+      title: "Scegli esercizio",
+      items: exercises,
+      getLabel: (exercise) => exercise.name,
+      getDescription: (exercise) => exercise.category,
+      onSelect: (exercise) => {
+        trigger.querySelector("span").textContent = exercise.name;
+        updateExerciseProgressCard(exercise, workouts, "year");
+        history.replaceState(null, "", `#progress?exercise=${encodeURIComponent(exercise.id)}&period=year`);
+      },
+    });
+  });
+}
+
+function updateExerciseProgressCard(exercise, workouts, period) {
+  const card = document.querySelector("#exercise-evolution-card");
+  if (!card) return;
+  card.innerHTML = `
+    <div class="section-heading">
+      <h2>Evoluzione esercizi</h2>
+    </div>
+    ${exerciseProgressDetail(exercise, workouts, period)}
+  `;
+  bindExercisePeriodFilters(exercise, workouts);
+}
+
+function bindExercisePeriodFilters(exercise, workouts) {
+  document.querySelectorAll(".period-pill").forEach((link) => link.addEventListener("click", (event) => {
+    event.preventDefault();
+    const params = new URLSearchParams(link.getAttribute("href").split("?")[1] || "");
+    const period = EXERCISE_PERIODS[params.get("period")] ? params.get("period") : "year";
+    updateExerciseProgressCard(exercise, workouts, period);
+    history.replaceState(null, "", `#progress?exercise=${encodeURIComponent(exercise.id)}&period=${period}`);
+  }));
+}
+
+function exerciseProgressDetail(selected, workouts, period = "year") {
+  const executions = exerciseExecutions(workouts, selected);
+  const summary = exerciseProgressSummary(executions);
+  const filteredExecutions = filterExecutionsByPeriod(executions, period);
+  const points = loadProgressionPoints(filteredExecutions).map((point) => ({
+    ...point,
+    tooltip: `${formatDate(point.date, { day: "2-digit", month: "long", year: "numeric" })}\n${point.workoutName}\n${point.sets} serie · ${point.reps} rip. · ${formatNumber(point.load)} kg`,
+  }));
+  const newestFirst = [...executions].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const periodLinks = Object.entries(EXERCISE_PERIODS).map(([key, config]) => {
+    const active = key === period;
+    return `<a class="period-pill ${active ? "active" : ""}" href="#progress?exercise=${encodeURIComponent(selected.id)}&period=${key}" ${active ? 'aria-current="true"' : ""}>${config.label}</a>`;
+  }).join("");
+  return `
+    <a class="text-button" href="#progress">← Cerca un altro esercizio</a>
+    <div class="section-heading"><h2>${escapeHtml(selected.name)}</h2></div>
+    <p class="muted">${escapeHtml(selected.category)} · Analisi basata sullo storico unico dell'esercizio.</p>
+    <section class="stats-grid exercise-summary-grid">
+      <article class="stat-card"><strong>${summary.latest ? formatDate(summary.latest.date, { day: "2-digit", month: "short", year: "numeric" }) : "n/d"}</strong><span>Ultimo allenamento</span></article>
+      <article class="stat-card"><strong>${formatNumber(summary.personalRecord)} kg</strong><span>Record personale</span></article>
+      <article class="stat-card"><strong>${summary.absoluteIncrease >= 0 ? "+" : ""}${formatNumber(summary.absoluteIncrease)} kg</strong><span>Incremento dalla prima registrazione</span></article>
+      <article class="stat-card"><strong>${summary.percentIncrease === null ? "--" : `${summary.percentIncrease >= 0 ? "+" : ""}${formatNumber(summary.percentIncrease)}%`}</strong><span>Incremento percentuale</span></article>
+    </section>
+    <section class="card chart-card"><div class="section-heading chart-heading"><h2>Progressione carico</h2><nav class="period-filter" aria-label="Periodo grafico esercizio">${periodLinks}</nav></div>${lineChart(points, "load", { adaptiveScale: true, emptyMessage: "Nessun dato disponibile per questo periodo." })}</section>
+    <details class="card report-section exercise-history-toggle">
+      <summary><span class="summary-show">Mostra storico esercizio</span><span class="summary-hide">Nascondi storico esercizio</span><b aria-hidden="true">⌄</b></summary>
+      <div class="exercise-history-content">${newestFirst.length ? `<div class="progress-list">${newestFirst.map((execution) => `<article class="progress-row exercise-history-row"><div><strong>${formatDate(execution.date, { day: "2-digit", month: "long", year: "numeric" })}</strong><span>${escapeHtml(execution.workoutName)}</span></div><p>${execution.sets} serie · ${execution.reps} rip. · ${formatNumber(execution.load)} kg</p></article>`).join("")}</div>` : '<div class="empty-state">Nessuna esecuzione registrata.</div>'}</div>
+    </details>`;
+}
+
+const routes = { home: renderHome, workouts: renderWorkouts, exercises: renderExercises, history: renderHistory, progress: renderProgress, reports: renderProgress, "exercise-progress": renderProgress };
 
 async function router() {
   if (isSupabaseConfigured && !currentUser) return renderAuth();
   showLoading();
-  const route = window.location.hash.slice(1) || "home";
+  const routeWithParams = window.location.hash.slice(1) || "home";
+  const route = routeWithParams.split("?")[0];
   try {
     await (routes[route] || routes.home)();
     document.querySelectorAll("[data-route]").forEach((link) => {

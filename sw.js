@@ -1,4 +1,4 @@
-const CACHE_NAME = "gymboard-v1.6.2";
+const CACHE_NAME = "gymboard-v2-load-chart-data-fix";
 const APP_ASSETS = [
   "./",
   "./index.html",
@@ -7,6 +7,8 @@ const APP_ASSETS = [
   "./js/auth-storage.js",
   "./js/config.js",
   "./js/data-store.js",
+  "./js/report-utils.js",
+  "./js/exercise-progress-utils.js",
   "./js/supabase-client.js",
   "./manifest.webmanifest",
   "./apple-touch-icon.png",

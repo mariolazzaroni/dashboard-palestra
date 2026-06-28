@@ -1,8 +1,10 @@
 # GymBoard
 
-**Current Version: v1.6.2**
+**Current Version: v2.0-dev**
 
-GymBoard e una Progressive Web App mobile-first per creare schede personalizzate, registrare gli allenamenti e monitorare i progressi in palestra. E realizzata con HTML, CSS e JavaScript vanilla, pubblicabile su GitHub Pages e collegata a Supabase per autenticazione e sincronizzazione cloud.
+GymBoard e una Progressive Web App mobile-first nata per creare schede personalizzate, registrare gli allenamenti e monitorare i progressi in palestra. Il progetto non e piu solo un tracker: la visione attuale e farlo evolvere in una piattaforma orientata ad analytics, motivazione e coaching personale, capace di trasformare i dati raccolti in insight utili e azioni concrete.
+
+E realizzata con HTML, CSS e JavaScript vanilla, pubblicabile su GitHub Pages e collegata a Supabase per autenticazione e sincronizzazione cloud.
 
 ## Funzioni
 
@@ -12,6 +14,8 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 - Categorie semplici per organizzare gli esercizi e preparare analisi future
 - Serie e ripetizioni previste salvate nelle schede
 - Sezione Esercizi per consultare e gestire il catalogo personale
+- Sezione Report con infrastruttura iniziale per analisi settimanali
+- Schermata Progressi unificata con statistiche generali e progressione esercizi
 - Suggerimenti automatici durante creazione e modifica delle schede
 - Riconoscimento di nomi equivalenti per evitare esercizi duplicati
 - Esercizi scelti dall'utente con serie, ripetizioni e carico
@@ -35,30 +39,91 @@ GymBoard e una Progressive Web App mobile-first per creare schede personalizzate
 
 ## Roadmap
 
-### v2.0
+### v1 - Tracking
 
-- Report settimanale PDF
-- Trend peso ultime 4 settimane
-- Volume allenamento settimanale
-- Confronto con settimane precedenti
-- Modulo cardio con durata e FC media
-- Archivio report
+Obiettivo: costruire una PWA stabile per registrare allenamenti, peso corporeo e progressione dei carichi.
 
-### v3.0
+- Login Supabase
+- Schede personalizzate
+- Catalogo esercizi
+- Storico allenamenti
+- Tracking peso giornaliero
+- Progressione carichi
+- Categorie esercizi
+- PWA installabile e supporto offline
 
-- Timer recupero
-- Tempi di recupero personalizzati
-- Miglioramenti UX allenamento
+### v2 - Analytics
 
-### v4.0
+Attualmente in sviluppo.
 
-- AI Coach
-- Analisi automatica dei dati
-- Commento settimanale
-- Suggerimenti basati su dati storici
-- Supporto a conoscenze scientifiche e linee guida
+Obiettivo: trasformare GymBoard da semplice tracker ad applicazione di analisi dell'allenamento.
+
+- Dashboard Statistiche
+- Report settimanali
+- Report mensili
+- Trend peso rolling 52 settimane
+- Analisi volume totale
+- Analisi volume per categoria
+- Progressione carico dei singoli esercizi
+- Record personali
+- Storico esercizio espandibile
+- PDF mensile
+- Infrastruttura dati pronta per AI
+
+### v3 - Gamification
+
+Obiettivo: rendere GymBoard piu coinvolgente premiando la costanza e i progressi reali.
+
+- Livelli utente
+- Sistema XP
+- Achievement
+- Streak settimanali
+- Statistiche lifetime:
+  - kg sollevati
+  - numero allenamenti
+  - ore allenate
+  - serie completate
+  - ripetizioni totali
+- Dashboard personale
+- Obiettivi settimanali
+- Record personali evidenziati
+- Progressione del profilo
+
+La gamification deve premiare la costanza e il miglioramento personale. Non dovra mai incentivare allenamenti inutili o rischiosi.
+
+### v4 - AI Coach
+
+Obiettivo: utilizzare tutti i dati raccolti per fornire analisi intelligenti e consigli personalizzati.
+
+- Analisi automatica dei progressi
+- Individuazione dei punti deboli
+- Analisi dei trend
+- Suggerimenti personalizzati
+- Report intelligenti
+- Coach AI
+
+L'AI dovra lavorare esclusivamente su dati gia elaborati dal modulo Analytics, senza interrogare direttamente il database.
 
 ## Changelog
+
+### v2.0-dev - Infrastruttura report
+
+- Avviato lo sviluppo della v2.0
+- Aggiunta sezione Report
+- Separata la logica di calcolo report dalla UI
+- Calcolo media peso settimanale
+- Calcolo volume allenamento settimanale
+- Calcolo volume per categoria
+- Confronto con settimana precedente
+- Numero settimana di riferimento nel report
+- Confronto percentuale vs settimana precedente
+- Trend peso rolling 52 settimane
+- Preparata struttura `buildMonthlyReport` per futuro PDF mensile
+- Unificate le sezioni Report e Progressi in una sola schermata
+- Aggiunta card Evoluzione esercizi nella schermata Progressi
+- Grafico evoluzione carico per singolo esercizio
+- Analisi generale e singoli esercizi convivono senza nuove pagine di navigazione
+- PDF e cardio non ancora implementati
 
 ### v1.6.2 - Reset form schede
 

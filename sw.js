@@ -1,4 +1,4 @@
-const CACHE_NAME = "gymboard-v2-1-mobile-profile-nav";
+const CACHE_NAME = "gymboard-v2-1-mobile-chart-profile-fix";
 const APP_ASSETS = [
   "./",
   "./index.html",

@@ -101,13 +101,22 @@ button {
 
 .topbar-actions {
   display: flex;
-  gap: 8px;
+  gap: 7px;
   align-items: center;
+  min-width: 0;
 }
 
 .user-badge {
-  max-width: 110px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 112px;
+  min-height: 38px;
   overflow: hidden;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 4%);
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 800;
@@ -902,6 +911,7 @@ h3 {
   display: block;
   width: 100%;
   height: auto;
+  min-height: 220px;
 }
 
 .chart-panel {
@@ -1637,8 +1647,38 @@ h3 {
     width: 100%;
   }
 
+  .topbar-actions {
+    gap: 6px;
+  }
+
   .user-badge {
+    display: inline-flex;
+    max-width: 88px;
+    min-height: 38px;
+    padding: 0 10px;
+    font-size: 0.72rem;
+  }
+
+  .topbar-actions .icon-button {
+    min-height: 38px;
+    padding: 0 12px;
+    border-radius: 19px;
+  }
+
+  #install-button {
     display: none;
+  }
+
+  .chart-card {
+    padding: 22px;
+  }
+
+  .xy-chart-wrap {
+    margin-inline: -2px;
+  }
+
+  .xy-chart {
+    min-height: 250px;
   }
 
   .auth-actions {

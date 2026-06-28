@@ -1,6 +1,6 @@
 # GymBoard
 
-**Current Version: v2.0-dev**
+**Current Version: v2.1**
 
 GymBoard e una Progressive Web App mobile-first nata per creare schede personalizzate, registrare gli allenamenti e monitorare i progressi in palestra. Il progetto non e piu solo un tracker: la visione attuale e farlo evolvere in una piattaforma orientata ad analytics, motivazione e coaching personale, capace di trasformare i dati raccolti in insight utili e azioni concrete.
 
@@ -28,9 +28,12 @@ E realizzata con HTML, CSS e JavaScript vanilla, pubblicabile su GitHub Pages e 
 - Registrazione giornaliera e grafico del peso corporeo
 - Promemoria in Home quando manca la misurazione di oggi
 - Login separato con email e password
-- Registrazione separata con nome, email e conferma password
+- Registrazione separata con nome, cognome, email e conferma password
 - Nome utente salvato nei metadata Supabase
 - Opzione **Ricordami** disponibile nel Login
+- Pagina Account con stato verifica email e sicurezza
+- Modifica nome e cognome dalla pagina Account
+- Recupero password e cambio password tramite Supabase
 - Persistenza online tramite Supabase
 - Fallback `localStorage` soltanto quando Supabase non è configurato
 - Installazione come PWA e utilizzo offline
@@ -39,7 +42,7 @@ E realizzata con HTML, CSS e JavaScript vanilla, pubblicabile su GitHub Pages e 
 
 ## Roadmap
 
-### v1 - Tracking
+### v1.x - Tracking
 
 Obiettivo: costruire una PWA stabile per registrare allenamenti, peso corporeo e progressione dei carichi.
 
@@ -52,11 +55,11 @@ Obiettivo: costruire una PWA stabile per registrare allenamenti, peso corporeo e
 - Categorie esercizi
 - PWA installabile e supporto offline
 
-### v2 - Analytics
+### v2.x - Analytics + Account/Sicurezza
 
 Attualmente in sviluppo.
 
-Obiettivo: trasformare GymBoard da semplice tracker ad applicazione di analisi dell'allenamento.
+Obiettivo: trasformare GymBoard da semplice tracker ad applicazione di analisi dell'allenamento, con una gestione account piu completa e sicura.
 
 - Dashboard Statistiche
 - Report settimanali
@@ -69,8 +72,14 @@ Obiettivo: trasformare GymBoard da semplice tracker ad applicazione di analisi d
 - Storico esercizio espandibile
 - PDF mensile
 - Infrastruttura dati pronta per AI
+- Pagina Account
+- Verifica email
+- Recupero password
+- Cambio password
+- Logout pulito
+- Eliminazione account preparata per backend sicuro
 
-### v3 - Gamification
+### v3.x - Gamification
 
 Obiettivo: rendere GymBoard piu coinvolgente premiando la costanza e i progressi reali.
 
@@ -91,7 +100,7 @@ Obiettivo: rendere GymBoard piu coinvolgente premiando la costanza e i progressi
 
 La gamification deve premiare la costanza e il miglioramento personale. Non dovra mai incentivare allenamenti inutili o rischiosi.
 
-### v4 - AI Coach
+### v4.x - AI Coach
 
 Obiettivo: utilizzare tutti i dati raccolti per fornire analisi intelligenti e consigli personalizzati.
 
@@ -105,6 +114,16 @@ Obiettivo: utilizzare tutti i dati raccolti per fornire analisi intelligenti e c
 L'AI dovra lavorare esclusivamente su dati gia elaborati dal modulo Analytics, senza interrogare direttamente il database.
 
 ## Changelog
+
+### v2.1 - Account & Sicurezza
+
+- Pagina Account
+- Stato verifica email
+- Reinvia email di verifica
+- Recupero password
+- Cambio password
+- Logout pulito
+- Eliminazione account preparata per backend sicuro
 
 ### v2.0-dev - Infrastruttura report
 

@@ -111,8 +111,14 @@ button {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 800;
+  text-decoration: none;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.user-badge:hover,
+.user-badge:focus-visible {
+  color: var(--text);
 }
 
 .icon-button,
@@ -124,6 +130,9 @@ button {
 }
 
 .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0 15px;
   background: var(--surface-soft);
   color: var(--text);
@@ -785,6 +794,67 @@ h3 {
   color: var(--text);
 }
 
+.account-banner {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+  border-color: rgb(255 184 107 / 28%);
+  background: linear-gradient(145deg, rgb(255 184 107 / 12%), var(--surface));
+}
+
+.account-banner p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.account-card {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.account-list {
+  display: grid;
+  gap: 10px;
+}
+
+.account-list p {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface-soft);
+}
+
+.account-list span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.account-list strong {
+  max-width: 62%;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-ok {
+  color: var(--accent);
+}
+
+.status-warning {
+  color: #ffb86b;
+}
+
+.danger-zone {
+  border-color: rgb(255 113 108 / 22%);
+}
+
 .data-error {
   margin-top: 12vh;
 }
@@ -1252,6 +1322,41 @@ h3 {
 .choice-item span {
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.install-guide-content {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: env(safe-area-inset-bottom);
+  -webkit-overflow-scrolling: touch;
+}
+
+.install-guide-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface-soft);
+}
+
+.install-guide-card.featured {
+  border-color: rgb(151 142 255 / 35%);
+  background: linear-gradient(145deg, rgb(151 142 255 / 15%), var(--surface-soft));
+}
+
+.install-guide-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.install-guide-card .button {
+  width: 100%;
+  margin-top: 4px;
 }
 
 .exercise-summary-grid {

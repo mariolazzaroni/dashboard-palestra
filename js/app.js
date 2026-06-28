@@ -25,6 +25,10 @@ function clearActiveWorkout() {
   localStorage.removeItem(ACTIVE_WORKOUT_KEY);
 }
 
+function isStandaloneApp() {
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+
 const escapeHtml = (value) =>
   String(value)
     .replaceAll("&", "&amp;")
@@ -45,11 +49,29 @@ const localDateKey = (date = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
-function displayName() {
+function fullDisplayName() {
   return currentUser?.user_metadata?.full_name?.trim()
     || currentUser?.user_metadata?.display_name?.trim()
     || localStorage.getItem("gymboard-display-name")
     || "Utente";
+}
+
+function profileNameParts() {
+  const metadata = currentUser?.user_metadata || {};
+  const fullNameParts = fullDisplayName().split(/\s+/).filter(Boolean);
+  const firstName = metadata.first_name?.trim() || metadata.display_name?.trim() || fullNameParts[0] || "";
+  const lastName = metadata.last_name?.trim() || fullNameParts.slice(1).join(" ");
+  return { firstName, lastName };
+}
+
+function displayName() {
+  return profileNameParts().firstName || "Utente";
+}
+
+function accountDisplayName() {
+  const { firstName, lastName } = profileNameParts();
+  if (!lastName) return firstName || "Account";
+  return `${firstName} ${lastName[0].toUpperCase()}.`;
 }
 
 function showToast(message, isError = false) {
@@ -85,40 +107,45 @@ async function getBodyWeights() {
 function setAuthenticatedLayout(authenticated) {
   document.body.classList.toggle("auth-mode", !authenticated);
   logoutButton.hidden = !authenticated || !isSupabaseConfigured;
+  installButton.hidden = !authenticated || isStandaloneApp();
   userBadge.hidden = !authenticated;
-  userBadge.textContent = authenticated ? displayName() : "";
+  userBadge.textContent = authenticated ? accountDisplayName() : "";
+  userBadge.setAttribute("aria-label", authenticated ? "Apri account" : "");
 }
 
 function renderAuth(mode = "login", message = "") {
   const isRegistration = mode === "registration";
+  const isReset = mode === "reset";
   setAuthenticatedLayout(false);
   app.innerHTML = `
     <section class="auth-card card">
       <p class="eyebrow">GymBoard</p>
-      <h1>${isRegistration ? "Crea il tuo account." : "Bentornato."}</h1>
-      <p class="muted">${isRegistration ? "Inserisci i tuoi dati per iniziare a usare la dashboard." : "Accedi per ritrovare allenamenti e progressi."}</p>
+      <h1>${isReset ? "Recupera password." : isRegistration ? "Crea il tuo account." : "Bentornato."}</h1>
+      <p class="muted">${isReset ? "Inserisci la tua email e ti invieremo il link per reimpostare la password." : isRegistration ? "Inserisci i tuoi dati per iniziare a usare la dashboard." : "Accedi per ritrovare allenamenti e progressi."}</p>
       ${message ? `<p class="auth-message" role="status">${escapeHtml(message)}</p>` : ""}
       <form id="auth-form" class="stack-form">
-        ${isRegistration ? '<div class="field"><label for="auth-name">Nome</label><input id="auth-name" name="name" autocomplete="name" maxlength="50" required /></div>' : ""}
+        ${isRegistration ? '<div class="field"><label for="auth-name">Nome</label><input id="auth-name" name="name" autocomplete="given-name" maxlength="50" required /></div><div class="field"><label for="auth-last-name">Cognome</label><input id="auth-last-name" name="lastName" autocomplete="family-name" maxlength="50" required /></div>' : ""}
         <div class="field"><label for="auth-email">Email</label><input id="auth-email" name="email" type="email" autocomplete="email" required /></div>
-        <div class="field"><label for="auth-password">Password</label><input id="auth-password" name="password" type="password" autocomplete="${isRegistration ? "new-password" : "current-password"}" minlength="6" required /></div>
+        ${isReset ? "" : `<div class="field"><label for="auth-password">Password</label><input id="auth-password" name="password" type="password" autocomplete="${isRegistration ? "new-password" : "current-password"}" minlength="6" required /></div>`}
         ${isRegistration ? '<div class="field"><label for="auth-password-confirmation">Conferma password</label><input id="auth-password-confirmation" name="passwordConfirmation" type="password" autocomplete="new-password" minlength="6" required /></div>' : ""}
-        ${isRegistration ? "" : `<label class="remember-control" for="auth-remember"><input id="auth-remember" name="remember" type="checkbox" ${isRememberSessionEnabled() ? "checked" : ""} /><span>Ricordami</span></label>`}
+        ${isRegistration || isReset ? "" : `<label class="remember-control" for="auth-remember"><input id="auth-remember" name="remember" type="checkbox" ${isRememberSessionEnabled() ? "checked" : ""} /><span>Ricordami</span></label>`}
         <div class="auth-actions">
-          <button class="button" type="submit">${isRegistration ? "Crea account" : "Accedi"}</button>
+          <button class="button" type="submit">${isReset ? "Invia email reset" : isRegistration ? "Crea account" : "Accedi"}</button>
         </div>
       </form>
+      ${!isRegistration && !isReset ? '<p class="auth-switch"><button class="text-button" id="forgot-password-button" type="button">Password dimenticata?</button></p>' : ""}
       <p class="auth-switch">
-        ${isRegistration ? "Hai gia un account?" : "Non hai un account?"}
-        <button class="text-button" id="auth-mode-button" type="button">${isRegistration ? "Accedi" : "Registrati"}</button>
+        ${isReset ? "Ti e tornata in mente?" : isRegistration ? "Hai gia un account?" : "Non hai un account?"}
+        <button class="text-button" id="auth-mode-button" type="button">${isReset ? "Torna al login" : isRegistration ? "Accedi" : "Registrati"}</button>
       </p>
     </section>`;
 
   const form = document.querySelector("#auth-form");
   form.addEventListener("submit", (event) => handleAuth(event, mode));
   document.querySelector("#auth-mode-button").addEventListener("click", () => {
-    renderAuth(isRegistration ? "login" : "registration");
+    renderAuth(isRegistration || isReset ? "login" : "registration");
   });
+  document.querySelector("#forgot-password-button")?.addEventListener("click", () => renderAuth("reset"));
 }
 
 function authValues(mode) {
@@ -127,8 +154,9 @@ function authValues(mode) {
   const data = new FormData(form);
   return {
     name: mode === "registration" ? String(data.get("name")).trim() : "",
+    lastName: mode === "registration" ? String(data.get("lastName")).trim() : "",
     email: String(data.get("email")).trim(),
-    password: String(data.get("password")),
+    password: mode === "reset" ? "" : String(data.get("password")),
     passwordConfirmation: mode === "registration" ? String(data.get("passwordConfirmation")) : "",
     remember: mode === "login" && data.get("remember") === "on",
   };
@@ -147,13 +175,26 @@ async function handleAuth(event, action) {
 
   try {
     if (!isSupabaseConfigured) {
+      if (action === "reset") {
+        renderAuth("login", "Reset password disponibile solo con Supabase configurato.");
+        return;
+      }
       if (action === "registration") {
-        localStorage.setItem("gymboard-display-name", values.name);
+        localStorage.setItem("gymboard-display-name", `${values.name} ${values.lastName}`.trim());
         renderAuth("login", "Account creato. Ora puoi accedere.");
         return;
       }
       currentUser = { user_metadata: { full_name: localStorage.getItem("gymboard-display-name") || "Utente" } };
       await showApp();
+      return;
+    }
+
+    if (action === "reset") {
+      const { error } = await supabase.auth.resetPasswordForEmail(values.email, {
+        redirectTo: `${window.location.origin}${window.location.pathname}#account`,
+      });
+      if (error) throw error;
+      renderAuth("login", "Email di recupero inviata. Controlla la tua casella di posta.");
       return;
     }
 
@@ -163,7 +204,7 @@ async function handleAuth(event, action) {
         email: values.email,
         password: values.password,
         options: {
-          data: { full_name: values.name, display_name: values.name },
+          data: { full_name: `${values.name} ${values.lastName}`.trim(), first_name: values.name, last_name: values.lastName, display_name: values.name },
           emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
         },
       });
@@ -305,6 +346,43 @@ function openChoiceModal({ title, items, getLabel, getDescription, onSelect }) {
   input.addEventListener("input", renderItems);
   renderItems();
   input.focus();
+}
+
+function openInstallGuide() {
+  const hasNativeInstall = Boolean(deferredInstallPrompt);
+  const modal = document.createElement("div");
+  modal.className = "choice-modal install-guide-modal";
+  modal.innerHTML = `
+    <div class="choice-modal-backdrop" data-install-close></div>
+    <section class="choice-sheet install-guide-sheet" role="dialog" aria-modal="true" aria-label="Installa GymBoard">
+      <div class="choice-sheet-header">
+        <div><p class="eyebrow">PWA</p><h2>Installa GymBoard</h2></div>
+        <button class="icon-button" type="button" data-install-close aria-label="Chiudi">×</button>
+      </div>
+      <div class="install-guide-content">
+        ${hasNativeInstall ? `<article class="install-guide-card featured"><strong>Chrome, Edge e browser compatibili</strong><p>Questo browser supporta l'installazione automatica della PWA.</p><button class="button" id="native-install-action" type="button">Installa app</button></article>` : `<article class="install-guide-card featured"><strong>Installazione automatica non disponibile</strong><p>Questo browser non espone il pulsante installabile diretto. Puoi comunque aggiungere GymBoard manualmente seguendo le istruzioni qui sotto.</p></article>`}
+        <article class="install-guide-card"><strong>iPhone o iPad</strong><p>Apri GymBoard in Safari, tocca Condividi e scegli “Aggiungi alla schermata Home”.</p></article>
+        <article class="install-guide-card"><strong>Safari su Mac</strong><p>Apri il menu File e scegli “Aggiungi al Dock”, se disponibile nella tua versione di Safari/macOS.</p></article>
+        <article class="install-guide-card"><strong>Altri browser</strong><p>Cerca nel menu del browser una voce come “Installa app”, “Aggiungi alla schermata Home” o “Crea scorciatoia”.</p></article>
+      </div>
+    </section>`;
+  document.body.append(modal);
+  requestAnimationFrame(() => modal.classList.add("visible"));
+
+  const close = () => {
+    modal.classList.remove("visible");
+    window.setTimeout(() => modal.remove(), 180);
+  };
+
+  modal.querySelectorAll("[data-install-close]").forEach((button) => button.addEventListener("click", close));
+  modal.querySelector("#native-install-action")?.addEventListener("click", async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = undefined;
+    installButton.hidden = true;
+    close();
+  });
 }
 
 async function renderHome() {
@@ -901,7 +979,160 @@ function exerciseProgressDetail(selected, workouts, period = "year") {
     </details>`;
 }
 
-const routes = { home: renderHome, workouts: renderWorkouts, exercises: renderExercises, history: renderHistory, progress: renderProgress, reports: renderProgress, "exercise-progress": renderProgress };
+function isEmailVerified(user = currentUser) {
+  return Boolean(user?.email_confirmed_at || user?.confirmed_at);
+}
+
+async function refreshCurrentUser() {
+  if (!isSupabaseConfigured) return currentUser;
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  currentUser = data.user;
+  setAuthenticatedLayout(Boolean(currentUser));
+  return currentUser;
+}
+
+async function cleanLogout() {
+  clearActiveWorkout();
+  if (isSupabaseConfigured) await supabase.auth.signOut();
+  currentUser = null;
+  window.history.replaceState(null, "", "#home");
+  renderAuth("login", "Logout effettuato.");
+}
+
+async function renderAccount() {
+  if (isSupabaseConfigured) {
+    try { await refreshCurrentUser(); } catch (error) { showToast(error.message, true); }
+  }
+  const verified = isEmailVerified();
+  const email = currentUser?.email || "Email non disponibile";
+  const { firstName, lastName } = profileNameParts();
+  app.innerHTML = `
+    <section class="page-header">
+      <div>
+        <p class="eyebrow">Account</p>
+        <h1>Sicurezza.</h1>
+        <p class="muted">Gestisci accesso, verifica email e password del tuo profilo GymBoard.</p>
+      </div>
+    </section>
+    ${!verified ? `<section class="card account-banner"><div><strong>Email non verificata</strong><p>Verifica la tua email per rendere l'account piu sicuro.</p></div><button class="button secondary" id="resend-verification-button" type="button">Reinvia email di verifica</button></section>` : ""}
+    <section class="card account-card">
+      <div class="section-heading"><h2>Profilo</h2></div>
+      <div class="account-list">
+        <p><span>Email</span><strong>${escapeHtml(email)}</strong></p>
+        <p><span>Stato email</span><strong class="${verified ? "status-ok" : "status-warning"}">${verified ? "Email verificata" : "Email non verificata"}</strong></p>
+      </div>
+      <form id="profile-form" class="stack-form">
+        <div class="field"><label for="profile-first-name">Nome</label><input id="profile-first-name" name="firstName" autocomplete="given-name" maxlength="50" value="${escapeHtml(firstName)}" required /></div>
+        <div class="field"><label for="profile-last-name">Cognome</label><input id="profile-last-name" name="lastName" autocomplete="family-name" maxlength="50" value="${escapeHtml(lastName)}" required /></div>
+        <button class="button" type="submit">Salva profilo</button>
+      </form>
+    </section>
+    <section class="card account-card">
+      <div class="section-heading"><h2>Cambia password</h2></div>
+      <form id="password-form" class="stack-form">
+        <div class="field"><label for="new-password">Nuova password</label><input id="new-password" name="password" type="password" autocomplete="new-password" minlength="6" required /></div>
+        <div class="field"><label for="new-password-confirmation">Conferma nuova password</label><input id="new-password-confirmation" name="passwordConfirmation" type="password" autocomplete="new-password" minlength="6" required /></div>
+        <button class="button" type="submit">Aggiorna password</button>
+      </form>
+    </section>
+    <section class="card account-card">
+      <div class="section-heading"><h2>Sessione</h2></div>
+      <p class="muted">Il logout termina la sessione e pulisce eventuali allenamenti temporanei non completati.</p>
+      <button class="button secondary" id="account-logout-button" type="button">Logout</button>
+    </section>
+    <section class="card account-card danger-zone">
+      <div class="section-heading"><h2>Elimina account</h2></div>
+      <p class="muted">La cancellazione definitiva deve passare da una funzione backend sicura. Nessuna chiave amministrativa viene usata nel frontend.</p>
+      <button class="button danger" id="delete-account-button" type="button">Elimina account</button>
+    </section>`;
+
+  document.querySelector("#resend-verification-button")?.addEventListener("click", resendVerificationEmail);
+  document.querySelector("#profile-form").addEventListener("submit", updateProfileName);
+  document.querySelector("#password-form").addEventListener("submit", changePassword);
+  document.querySelector("#account-logout-button").addEventListener("click", cleanLogout);
+  document.querySelector("#delete-account-button").addEventListener("click", requestAccountDeletion);
+}
+
+async function resendVerificationEmail() {
+  if (!isSupabaseConfigured || !currentUser?.email) {
+    showToast("Verifica email disponibile solo con Supabase.", true);
+    return;
+  }
+  try {
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: currentUser.email,
+      options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}#account` },
+    });
+    if (error) throw error;
+    showToast("Email di verifica inviata.");
+  } catch (error) { showToast(error.message, true); }
+}
+
+async function updateProfileName(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  const data = new FormData(form);
+  const firstName = String(data.get("firstName")).trim();
+  const lastName = String(data.get("lastName")).trim();
+  const fullName = `${firstName} ${lastName}`.trim();
+  try {
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          full_name: fullName,
+          first_name: firstName,
+          last_name: lastName,
+          display_name: firstName,
+        },
+      });
+      if (error) throw error;
+      await refreshCurrentUser();
+    } else {
+      localStorage.setItem("gymboard-display-name", fullName);
+      currentUser = { user_metadata: { full_name: fullName, first_name: firstName, last_name: lastName, display_name: firstName } };
+      setAuthenticatedLayout(true);
+    }
+    showToast("Profilo aggiornato.");
+    await renderAccount();
+  } catch (error) { showToast(error.message, true); }
+}
+
+async function changePassword(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  const data = new FormData(form);
+  const password = String(data.get("password"));
+  const confirmation = String(data.get("passwordConfirmation"));
+  if (password !== confirmation) {
+    showToast("Le password non coincidono", true);
+    return;
+  }
+  if (!isSupabaseConfigured) {
+    showToast("Cambio password disponibile solo con Supabase configurato.", true);
+    return;
+  }
+  try {
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) throw error;
+    form.reset();
+    await refreshCurrentUser();
+    showToast("Password aggiornata.");
+  } catch (error) { showToast(error.message, true); }
+}
+
+function requestAccountDeletion() {
+  const firstConfirm = window.confirm("Vuoi davvero eliminare il tuo account?");
+  if (!firstConfirm) return;
+  const secondConfirm = window.confirm("Questa operazione è irreversibile e cancellerà tutti i dati collegati.");
+  if (!secondConfirm) return;
+  showToast("La cancellazione definitiva richiede una funzione sicura lato backend.");
+}
+
+const routes = { home: renderHome, workouts: renderWorkouts, exercises: renderExercises, history: renderHistory, progress: renderProgress, account: renderAccount, reports: renderProgress, "exercise-progress": renderProgress };
 
 async function router() {
   if (isSupabaseConfigured && !currentUser) return renderAuth();
@@ -939,13 +1170,9 @@ async function initialize() {
   if (currentUser) await showApp(); else renderAuth();
 }
 
-logoutButton.addEventListener("click", async () => {
-  if (isSupabaseConfigured) await supabase.auth.signOut();
-  currentUser = null;
-  renderAuth();
-});
+logoutButton.addEventListener("click", cleanLogout);
 window.addEventListener("hashchange", router);
-window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; installButton.hidden = false; });
-installButton.addEventListener("click", async () => { if (!deferredInstallPrompt) return; deferredInstallPrompt.prompt(); await deferredInstallPrompt.userChoice; deferredInstallPrompt = undefined; installButton.hidden = true; });
+window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; if (currentUser && !isStandaloneApp()) installButton.hidden = false; });
+installButton.addEventListener("click", openInstallGuide);
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => console.warn("Service worker non registrato.")));
 initialize();

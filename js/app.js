@@ -813,8 +813,8 @@ async function renderExercises() {
 
 function lineChart(points, metric, options = {}) {
   if (!points.length) return `<div class="empty-state">${options.emptyMessage || "Nessun dato disponibile."}</div>`;
-  const width = 620, height = 360;
-  const padding = { top: 42, right: 30, bottom: 42, left: 56 };
+  const width = 620, height = 280;
+  const padding = { top: 34, right: 28, bottom: 34, left: 54 };
   const chartWidth = width - padding.left - padding.right, chartHeight = height - padding.top - padding.bottom;
   const values = points.map((point) => point.value), dataMax = Math.max(...values), dataMin = Math.min(...values);
   const min = options.adaptiveScale ? Math.max(0, Math.floor(dataMin - 2)) : 0;

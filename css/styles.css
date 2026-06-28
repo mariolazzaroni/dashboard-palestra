@@ -911,7 +911,6 @@ h3 {
   display: block;
   width: 100%;
   height: auto;
-  min-height: 220px;
 }
 
 .chart-panel {
@@ -1411,6 +1410,10 @@ h3 {
   backdrop-filter: blur(22px);
 }
 
+.mobile-profile-nav {
+  display: none !important;
+}
+
 .bottom-nav a {
   display: grid;
   gap: 4px;
@@ -1539,6 +1542,27 @@ h3 {
 }
 
 @media (max-width: 420px) {
+  .bottom-nav {
+    grid-template-columns: repeat(6, 1fr);
+    right: max(10px, env(safe-area-inset-right));
+    left: max(10px, env(safe-area-inset-left));
+    padding: 6px;
+  }
+
+  .mobile-profile-nav {
+    display: grid !important;
+  }
+
+  .bottom-nav a {
+    min-height: 55px;
+    border-radius: 22px;
+    font-size: 0.56rem;
+  }
+
+  .nav-icon {
+    font-size: 1.15rem;
+  }
+
   .exercise-summary-grid {
     grid-template-columns: 1fr;
   }
@@ -1678,7 +1702,8 @@ h3 {
   }
 
   .xy-chart {
-    min-height: 250px;
+    height: 300px;
+    min-height: 300px;
   }
 
   .auth-actions {

@@ -1,6 +1,6 @@
 # GymBoard
 
-**Current Version: v2.1**
+**Current Version: v2.2**
 
 GymBoard e una Progressive Web App mobile-first nata per creare schede personalizzate, registrare gli allenamenti e monitorare i progressi in palestra. Il progetto non e piu solo un tracker: la visione attuale e farlo evolvere in una piattaforma orientata ad analytics, motivazione e coaching personale, capace di trasformare i dati raccolti in insight utili e azioni concrete.
 
@@ -72,6 +72,9 @@ Obiettivo: trasformare GymBoard da semplice tracker ad applicazione di analisi d
 - Storico esercizio espandibile
 - PDF mensile
 - Infrastruttura dati pronta per AI
+- Grafici piu leggibili e integrati nella UI
+- Form schede chiuso di default
+- Rimozione temporanea esercizi dall'allenamento corrente
 - Pagina Account
 - Verifica email
 - Recupero password
@@ -114,6 +117,17 @@ Obiettivo: utilizzare tutti i dati raccolti per fornire analisi intelligenti e c
 L'AI dovra lavorare esclusivamente su dati gia elaborati dal modulo Analytics, senza interrogare direttamente il database.
 
 ## Changelog
+
+### v2.2 - Rifiniture UI allenamenti e grafici
+
+- Grafici Peso e Progressione carico con area visuale piu ampia
+- Ridotto padding verticale nelle card dei grafici
+- Schermata Allenamenti piu pulita con form scheda chiuso di default
+- Aggiunta card **+ Nuova scheda** per aprire il form di creazione
+- Chiusura e reset del form dopo salvataggio o annullamento
+- Modifica scheda con apertura del form gia compilato
+- Possibilita di saltare un esercizio solo nell'allenamento corrente
+- Allenamento temporaneo coerente anche dopo navigazione o ripresa
 
 ### v2.1 - Account & Sicurezza
 

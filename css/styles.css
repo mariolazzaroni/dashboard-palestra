@@ -476,6 +476,39 @@ h3 {
   justify-content: space-between;
 }
 
+.new-plan-card {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  min-height: 132px;
+  align-content: center;
+  border-style: dashed;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.new-plan-card span {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 18px;
+  background: rgb(151 142 255 / 18%);
+  color: var(--accent);
+  font-size: 1.6rem;
+  font-weight: 900;
+}
+
+.new-plan-card strong {
+  font-size: 1.1rem;
+}
+
+.new-plan-card small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .template-card .button {
   flex: 0 0 auto;
 }
@@ -886,7 +919,7 @@ h3 {
 }
 
 .chart-card {
-  padding: 28px;
+  padding: 22px;
   overflow: hidden;
 }
 
@@ -920,8 +953,8 @@ h3 {
 
 .xy-chart-wrap {
   overflow-x: auto;
-  margin: 8px -4px 0;
-  padding: 4px;
+  margin: 2px -8px 0;
+  padding: 0;
 }
 
 .xy-chart {
@@ -1700,12 +1733,12 @@ h3 {
   }
 
   .chart-card {
-    padding: 22px;
+    padding: 18px;
   }
 
   .xy-chart-wrap {
-    width: calc(100% + 16px);
-    margin: 14px -8px 0;
+    width: calc(100% + 20px);
+    margin: 4px -10px 0;
     padding: 0;
     overflow: visible;
   }
@@ -1713,7 +1746,7 @@ h3 {
   .xy-chart {
     display: block;
     width: 100%;
-    height: clamp(260px, 58vw, 340px);
+    height: clamp(300px, 72vw, 390px);
     min-height: 0;
   }
 

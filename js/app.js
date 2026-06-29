@@ -464,11 +464,22 @@ async function renderWorkouts() {
   app.innerHTML = `
     <section class="page-header"><div><p class="eyebrow">Allenamenti</p><h1>Le tue schede.</h1></div></section>
     ${getActiveWorkout() ? '<section class="card active-workout-notice"><div><p class="eyebrow">Allenamento in corso</p><h2>Hai un allenamento in corso. Vuoi riprenderlo?</h2></div><div class="card-actions"><button class="button" id="resume-workout" type="button">Riprendi</button><button class="button danger" id="discard-workout" type="button">Scarta</button></div></section>' : ""}
-    <section class="card plan-creator"><h2 id="plan-form-title">Crea una scheda</h2><form id="plan-form" class="stack-form"><input type="hidden" id="plan-id" name="planId" /><div class="field"><label for="plan-name">Nome</label><input id="plan-name" name="name" maxlength="50" placeholder="Lista A" required /></div><div><label class="field-label">Esercizi</label><div class="exercise-builder" id="exercise-builder"></div><button class="text-button" id="add-exercise-row" type="button">+ Aggiungi esercizio</button></div><div class="form-actions"><button class="button" type="submit">Salva scheda</button><button class="button secondary" id="cancel-plan-edit" type="button" hidden>Annulla</button></div></form></section>
-    <div class="section-heading"><h2>Schede attive</h2></div><section class="template-grid">${activePlans.length ? activePlans.map(planCard).join("") : '<div class="empty-state">Nessuna scheda attiva. Crea la tua Lista A qui sopra.</div>'}</section>
+    <div class="section-heading"><h2>Schede attive</h2></div><section class="template-grid"><button class="card new-plan-card" id="new-plan-button" type="button"><span>+</span><strong>Nuova scheda</strong><small>Crea una nuova routine personalizzata</small></button>${activePlans.length ? activePlans.map(planCard).join("") : '<div class="empty-state">Nessuna scheda attiva. Crea la tua prima scheda.</div>'}</section>
+    <section class="card plan-creator" hidden><h2 id="plan-form-title">Crea una scheda</h2><form id="plan-form" class="stack-form"><input type="hidden" id="plan-id" name="planId" /><div class="field"><label for="plan-name">Nome</label><input id="plan-name" name="name" maxlength="50" placeholder="Lista A" required /></div><div><label class="field-label">Esercizi</label><div class="exercise-builder" id="exercise-builder"></div><button class="text-button" id="add-exercise-row" type="button">+ Aggiungi esercizio</button></div><div class="form-actions"><button class="button" type="submit">Salva scheda</button><button class="button secondary" id="cancel-plan-edit" type="button">Annulla</button></div></form></section>
     ${archivedPlans.length ? `<div class="section-heading"><h2>Schede archiviate</h2></div><section class="template-grid archived-grid">${archivedPlans.map(planCard).join("")}</section>` : ""}<section class="card session-card" id="session-card" hidden></section>`;
 
   const builder = document.querySelector("#exercise-builder");
+  const planCreator = document.querySelector(".plan-creator");
+  const openPlanForm = () => {
+    planCreator.hidden = false;
+    if (!builder.children.length) addRow();
+    document.querySelector("#cancel-plan-edit").hidden = false;
+    planCreator.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const closePlanForm = () => {
+    resetPlanForm(addRow);
+    planCreator.hidden = true;
+  };
   document.querySelector("#resume-workout")?.addEventListener("click", async () => resumeActiveWorkout(plans, await getWorkouts()));
   document.querySelector("#discard-workout")?.addEventListener("click", async () => {
     if (!window.confirm("Scartare l'allenamento in corso? I dati inseriti andranno persi.")) return;
@@ -488,9 +499,12 @@ async function renderWorkouts() {
     bindExerciseSuggestions(row, exerciseCatalog);
     bindExerciseOrder(row);
   };
-  addRow();
+  document.querySelector("#new-plan-button").addEventListener("click", () => {
+    resetPlanForm(addRow);
+    openPlanForm();
+  });
   document.querySelector("#add-exercise-row").addEventListener("click", () => addRow());
-  document.querySelector("#cancel-plan-edit").addEventListener("click", () => resetPlanForm(addRow));
+  document.querySelector("#cancel-plan-edit").addEventListener("click", closePlanForm);
 
   document.querySelector("#plan-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -516,6 +530,7 @@ async function renderWorkouts() {
       if (data.get("planId")) await planStore.update(String(data.get("planId")), changes);
       else await planStore.add(changes);
       showToast(data.get("planId") ? "Scheda aggiornata" : "Scheda creata");
+      closePlanForm();
       await renderWorkouts();
     } catch (error) { showToast(error.message, true); }
   });
@@ -525,10 +540,9 @@ async function renderWorkouts() {
     document.querySelector("#plan-id").value = plan.id;
     document.querySelector("#plan-name").value = plan.name;
     document.querySelector("#plan-form-title").textContent = "Modifica scheda";
-    document.querySelector("#cancel-plan-edit").hidden = false;
     builder.innerHTML = "";
     plan.exercises.forEach(addRow);
-    document.querySelector(".plan-creator").scrollIntoView({ behavior: "smooth" });
+    openPlanForm();
   }));
   document.querySelectorAll("[data-archive-plan]").forEach((button) => button.addEventListener("click", async () => {
     try { await planStore.archive(button.dataset.archivePlan); showToast("Scheda archiviata"); await renderWorkouts(); } catch (error) { showToast(error.message, true); }
@@ -822,8 +836,8 @@ async function renderExercises() {
 
 function lineChart(points, metric, options = {}) {
   if (!points.length) return `<div class="empty-state">${options.emptyMessage || "Nessun dato disponibile."}</div>`;
-  const width = 620, height = 280;
-  const padding = { top: 34, right: 28, bottom: 34, left: 54 };
+  const width = 620, height = 340;
+  const padding = { top: 22, right: 24, bottom: 26, left: 50 };
   const chartWidth = width - padding.left - padding.right, chartHeight = height - padding.top - padding.bottom;
   const values = points.map((point) => point.value), dataMax = Math.max(...values), dataMin = Math.min(...values);
   const min = options.adaptiveScale ? Math.max(0, Math.floor(dataMin - 2)) : 0;

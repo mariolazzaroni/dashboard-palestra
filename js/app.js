@@ -653,13 +653,21 @@ function resumeActiveWorkout(plans, workouts) {
 function renderActiveWorkout(plan, draft) {
   const sessionCard = document.querySelector("#session-card");
   sessionCard.hidden = false;
-  sessionCard.innerHTML = `<h2>${escapeHtml(plan.name)}</h2><p class="muted">Inserisci i dati svolti. Il volume è serie × ripetizioni × carico.</p><form id="session-form" class="stack-form"><input type="hidden" name="planId" value="${plan.id}" /><div class="exercise-entry-list">${plan.exercises.map((exercise, index) => exerciseEntry(exercise, index, draft.exercises[index])).join("")}</div><div class="field"><label for="workout-notes">Note</label><textarea id="workout-notes" name="notes" placeholder="Note sull'allenamento...">${escapeHtml(draft.notes || "")}</textarea></div><div class="form-actions"><button class="button" type="submit">Completa allenamento</button><button class="button danger" id="discard-active-workout" type="button">Scarta</button></div></form>`;
+  sessionCard.innerHTML = `<h2>${escapeHtml(plan.name)}</h2><p class="muted">Inserisci i dati svolti. Puoi saltare un esercizio solo per l'allenamento di oggi.</p><form id="session-form" class="stack-form"><input type="hidden" name="planId" value="${plan.id}" /><div class="exercise-entry-list">${draft.exercises.length ? draft.exercises.map((exercise, index) => exerciseEntry(exercise, index)).join("") : '<div class="empty-state">Hai rimosso tutti gli esercizi da questo allenamento.</div>'}</div><div class="field"><label for="workout-notes">Note</label><textarea id="workout-notes" name="notes" placeholder="Note sull'allenamento...">${escapeHtml(draft.notes || "")}</textarea></div><div class="form-actions"><button class="button" type="submit" ${draft.exercises.length ? "" : "disabled"}>Completa allenamento</button><button class="button danger" id="discard-active-workout" type="button">Scarta</button></div></form>`;
   sessionCard.scrollIntoView({ behavior: "smooth", block: "start" });
   const form = document.querySelector("#session-form");
-  const persistDraft = () => saveActiveWorkout(readSessionDraft(form, plan));
+  const persistDraft = () => saveActiveWorkout(readSessionDraft(form, plan, draft));
   form.addEventListener("input", persistDraft);
   form.addEventListener("change", persistDraft);
-  form.addEventListener("submit", (event) => saveSession(event, plan));
+  form.addEventListener("submit", (event) => saveSession(event, plan, draft));
+  document.querySelectorAll("[data-skip-exercise]").forEach((button) => button.addEventListener("click", () => {
+    if (!window.confirm("Rimuovere questo esercizio solo dall'allenamento di oggi?")) return;
+    const currentDraft = readSessionDraft(form, plan, draft);
+    currentDraft.exercises = currentDraft.exercises.filter((_, index) => index !== Number(button.dataset.skipExercise));
+    saveActiveWorkout(currentDraft);
+    showToast("Esercizio rimosso dall'allenamento di oggi");
+    renderActiveWorkout(plan, currentDraft);
+  }));
   document.querySelector("#discard-active-workout").addEventListener("click", async () => {
     if (!window.confirm("Scartare l'allenamento in corso? I dati inseriti andranno persi.")) return;
     clearActiveWorkout();
@@ -668,37 +676,38 @@ function renderActiveWorkout(plan, draft) {
   });
 }
 
-function exerciseEntry(exercise, index, values = {}) {
-  const loadValue = values.load === undefined || values.load === null ? "" : values.load;
-  const previousLoad = Number.isFinite(Number(values.previousLoad)) ? Number(values.previousLoad) : null;
-  return `<fieldset class="exercise-entry"><legend>${escapeHtml(exercise.name)}</legend><input type="hidden" name="exercise-id-${index}" value="${exercise.id}" /><div class="exercise-values"><div class="field"><label for="sets-${index}">Serie</label><input id="sets-${index}" name="sets-${index}" type="number" min="1" value="${values.sets ?? 3}" required /></div><div class="field"><label for="reps-${index}">Rip.</label><input id="reps-${index}" name="reps-${index}" type="number" min="1" value="${values.reps ?? 8}" required /></div><div class="field"><label for="load-${index}">Kg</label><input id="load-${index}" name="load-${index}" type="number" min="0" step="0.5" value="${escapeHtml(loadValue)}" placeholder="kg" required />${previousLoad === null ? "" : `<small class="field-hint">Ultima volta: ${formatNumber(previousLoad)} kg</small>`}</div></div></fieldset>`;
+function exerciseEntry(exercise, index) {
+  const loadValue = exercise.load === undefined || exercise.load === null ? "" : exercise.load;
+  const previousLoad = Number.isFinite(Number(exercise.previousLoad)) ? Number(exercise.previousLoad) : null;
+  return `<fieldset class="exercise-entry"><div class="exercise-entry-heading"><legend>${escapeHtml(exercise.name)}</legend><button class="text-button skip-exercise-button" type="button" data-skip-exercise="${index}">Salta esercizio</button></div><input type="hidden" name="exercise-id-${index}" value="${exercise.exerciseId}" /><div class="exercise-values"><div class="field"><label for="sets-${index}">Serie</label><input id="sets-${index}" name="sets-${index}" type="number" min="1" value="${exercise.sets ?? 3}" required /></div><div class="field"><label for="reps-${index}">Rip.</label><input id="reps-${index}" name="reps-${index}" type="number" min="1" value="${exercise.reps ?? 8}" required /></div><div class="field"><label for="load-${index}">Kg</label><input id="load-${index}" name="load-${index}" type="number" min="0" step="0.5" value="${escapeHtml(loadValue)}" placeholder="kg" required />${previousLoad === null ? "" : `<small class="field-hint">Ultima volta: ${formatNumber(previousLoad)} kg</small>`}</div></div></fieldset>`;
 }
 
-function readSessionDraft(form, plan) {
+function readSessionDraft(form, plan, draft = getActiveWorkout()) {
   const data = new FormData(form);
+  const sourceExercises = draft?.exercises || [];
   return {
     planId: plan.id,
     name: plan.name,
     notes: String(data.get("notes") || ""),
-    exercises: plan.exercises.map((exercise, index) => ({
-      exerciseId: exercise.id,
+    exercises: sourceExercises.map((exercise, index) => ({
+      exerciseId: exercise.exerciseId,
       name: exercise.name,
       sets: Number(data.get(`sets-${index}`)),
       reps: Number(data.get(`reps-${index}`)),
       load: String(data.get(`load-${index}`) || ""),
-      previousLoad: getActiveWorkout()?.exercises?.[index]?.previousLoad,
+      previousLoad: exercise.previousLoad,
     })),
   };
 }
 
-async function saveSession(event, plan) {
+async function saveSession(event, plan, draft = getActiveWorkout()) {
   event.preventDefault();
-  const data = new FormData(event.currentTarget);
-  const exercises = plan.exercises.map((exercise, index) => {
-    const sets = Number(data.get(`sets-${index}`));
-    const reps = Number(data.get(`reps-${index}`));
-    const load = Number(data.get(`load-${index}`));
-    return { exerciseId: exercise.id, name: exercise.name, sets, reps, load, volume: sets * reps * load };
+  const currentDraft = readSessionDraft(event.currentTarget, plan, draft);
+  const exercises = currentDraft.exercises.map((exercise) => {
+    const sets = Number(exercise.sets);
+    const reps = Number(exercise.reps);
+    const load = Number(exercise.load);
+    return { exerciseId: exercise.exerciseId, name: exercise.name, sets, reps, load, volume: sets * reps * load };
   });
   try {
     await workoutStore.add({ planId: plan.id, name: plan.name, date: new Date().toISOString(), duration: 1, exercises, volume: exercises.reduce((sum, exercise) => sum + exercise.volume, 0) });

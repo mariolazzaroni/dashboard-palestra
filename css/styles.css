@@ -640,6 +640,23 @@ h3 {
   font-weight: 800;
 }
 
+.exercise-entry-heading {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.exercise-entry-heading legend {
+  padding: 0;
+}
+
+.skip-exercise-button {
+  color: var(--danger);
+  font-size: 0.82rem;
+}
+
 .exercise-values {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

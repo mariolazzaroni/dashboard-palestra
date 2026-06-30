@@ -1,4 +1,4 @@
-const CACHE_NAME = "gymboard-v2-1-ui-refactor-workouts-charts";
+const CACHE_NAME = "gymboard-v2-2-chart-responsive-final";
 const APP_ASSETS = [
   "./",
   "./index.html",

@@ -779,8 +779,23 @@ function exerciseManagementCard(exercise, stats) {
     </article>`;
 }
 
+function renderExerciseCatalogList(exercises, stats) {
+  const query = document.querySelector("#exercise-search")?.value.trim().toLowerCase() || "";
+  const category = document.querySelector("#exercise-category-filter")?.value || "Tutti";
+  const filtered = exercises
+    .filter((exercise) => exercise.name.toLowerCase().includes(query))
+    .filter((exercise) => category === "Tutti" || (exercise.category || "Altro") === category)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  document.querySelector("#exercise-count").textContent = `${filtered.length} ${filtered.length === 1 ? "esercizio trovato" : "esercizi trovati"}`;
+  document.querySelector("#exercise-manager-list").innerHTML = filtered.length
+    ? filtered.map((exercise) => exerciseManagementCard(exercise, stats.get(exercise.id))).join("")
+    : '<div class="empty-state">Nessun esercizio trovato con questi filtri.</div>';
+  bindExerciseManagementActions(exercises);
+}
+
 async function renderExercises() {
   const [exercises, plans, workouts] = await Promise.all([exerciseStore.getAll(), planStore.getAll(), getWorkouts()]);
+  const sortedExercises = [...exercises].sort((a, b) => a.name.localeCompare(b.name));
   const stats = new Map(exercises.map((exercise) => [exercise.id, { planCount: 0, workoutCount: 0 }]));
 
   plans.forEach((plan) => {
@@ -799,10 +814,23 @@ async function renderExercises() {
 
   app.innerHTML = `
     <section class="page-header"><div><p class="eyebrow">Catalogo</p><h1>Esercizi.</h1><p class="muted">Gestisci nome e categoria senza perdere lo storico collegato.</p></div></section>
-    <section class="exercise-manager-list">
-      ${exercises.length ? exercises.map((exercise) => exerciseManagementCard(exercise, stats.get(exercise.id))).join("") : '<div class="empty-state">Nessun esercizio salvato. Crea una scheda per iniziare.</div>'}
+    <section class="card exercise-catalog-controls">
+      <div class="filters exercise-filters">
+        <div class="field"><label for="exercise-search">Cerca esercizio</label><input id="exercise-search" type="search" placeholder="Es. Panca piana" autocomplete="off" /></div>
+        <div class="field"><label for="exercise-category-filter">Categoria</label><select id="exercise-category-filter">${["Tutti", ...EXERCISE_CATEGORIES].map((category) => `<option value="${category}">${category}</option>`).join("")}</select></div>
+      </div>
+      <p class="catalog-count" id="exercise-count">${sortedExercises.length} ${sortedExercises.length === 1 ? "esercizio trovato" : "esercizi trovati"}</p>
+    </section>
+    <section class="exercise-manager-list" id="exercise-manager-list">
+      ${sortedExercises.length ? sortedExercises.map((exercise) => exerciseManagementCard(exercise, stats.get(exercise.id))).join("") : '<div class="empty-state">Nessun esercizio salvato. Crea una scheda per iniziare.</div>'}
     </section>`;
 
+  document.querySelector("#exercise-search").addEventListener("input", () => renderExerciseCatalogList(sortedExercises, stats));
+  document.querySelector("#exercise-category-filter").addEventListener("change", () => renderExerciseCatalogList(sortedExercises, stats));
+  bindExerciseManagementActions(sortedExercises);
+}
+
+function bindExerciseManagementActions(exercises) {
   document.querySelectorAll("[data-edit-exercise]").forEach((button) => button.addEventListener("click", () => {
     const exercise = exercises.find((item) => item.id === button.dataset.editExercise);
     const card = document.querySelector(`[data-exercise-card="${exercise.id}"]`);

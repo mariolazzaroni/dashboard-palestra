@@ -1248,6 +1248,21 @@ h3 {
   gap: 12px;
 }
 
+.exercise-catalog-controls {
+  margin-bottom: 18px;
+}
+
+.exercise-filters {
+  margin-bottom: 10px;
+}
+
+.catalog-count {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
 .exercise-manager-card {
   display: grid;
   gap: 16px;
@@ -1668,6 +1683,10 @@ h3 {
     width: 100%;
     max-width: 100%;
     min-width: 0;
+  }
+
+  .exercise-filters {
+    grid-template-columns: 1fr;
   }
 
   .filters input,

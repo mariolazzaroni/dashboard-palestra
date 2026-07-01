@@ -1,6 +1,6 @@
 # GymBoard
 
-**Current Version: v2.2**
+**Current Version: v2.3**
 
 GymBoard è una Progressive Web App per creare schede palestra, registrare allenamenti, monitorare peso corporeo e leggere i propri progressi nel tempo.
 
@@ -203,13 +203,19 @@ L'AI dovrà lavorare su dati già normalizzati, non direttamente sul database.
 
 ## Changelog Compatto
 
+### v2.3
+
+- Aggiunta modalità demo locale senza login
+- Dati demo inclusi per schede, allenamenti, peso, statistiche e grafici
+- Badge **Modalità demo**
+- Demo isolata da Supabase e dai dati reali
+
 ### v2.2
 
 - Migliorata la UI dei grafici
 - Form schede chiuso di default
 - Aggiunta card **+ Nuova scheda**
 - Possibilità di saltare esercizi solo nell'allenamento corrente
-- Aggiunta modalità demo locale senza login
 
 ### v2.1
 
@@ -240,4 +246,3 @@ L'AI dovrà lavorare su dati già normalizzati, non direttamente sul database.
 - Tracking allenamenti e peso
 - Grafici progressi
 - Supporto offline
-

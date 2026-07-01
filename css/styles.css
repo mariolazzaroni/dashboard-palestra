@@ -962,16 +962,21 @@ h3 {
 }
 
 .xy-chart-wrap {
-  overflow-x: auto;
   margin: 4px 0 0;
   padding: 0;
+  overflow: hidden;
+}
+
+.xy-chart-frame {
+  width: 100%;
+  aspect-ratio: 1.25 / 1;
+  max-height: 340px;
 }
 
 .xy-chart {
   display: block;
   width: 100%;
-  height: clamp(280px, 78vw, 340px);
-  max-height: 340px;
+  height: 100%;
 }
 
 .chart-panel {
@@ -1610,7 +1615,11 @@ h3 {
   }
 
   .xy-chart {
-    height: auto;
+    height: 100%;
+  }
+
+  .xy-chart-frame {
+    aspect-ratio: 1.6 / 1;
     max-height: 420px;
   }
 }
@@ -1630,7 +1639,12 @@ h3 {
   }
 
   .xy-chart {
-    max-height: 460px;
+    height: 100%;
+  }
+
+  .xy-chart-frame {
+    aspect-ratio: 1.85 / 1;
+    max-height: 400px;
   }
 }
 
@@ -1795,12 +1809,13 @@ h3 {
     overflow: hidden;
   }
 
-  .xy-chart {
-    display: block;
-    width: 100%;
-    height: clamp(280px, 78vw, 340px);
+  .xy-chart-frame {
+    aspect-ratio: 1.2 / 1;
     max-height: 340px;
-    min-height: 280px;
+  }
+
+  .xy-chart {
+    height: 100%;
   }
 
   .auth-actions {

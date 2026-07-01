@@ -865,7 +865,7 @@ function bindExerciseManagementActions(exercises) {
 function lineChart(points, metric, options = {}) {
   if (!points.length) return `<div class="empty-state">${options.emptyMessage || "Nessun dato disponibile."}</div>`;
   const width = 620, height = 340;
-  const padding = { top: 22, right: 24, bottom: 26, left: 50 };
+  const padding = { top: 16, right: 18, bottom: 20, left: 44 };
   const chartWidth = width - padding.left - padding.right, chartHeight = height - padding.top - padding.bottom;
   const values = points.map((point) => point.value), dataMax = Math.max(...values), dataMin = Math.min(...values);
   const min = options.adaptiveScale ? Math.max(0, Math.floor(dataMin - 2)) : 0;
@@ -877,7 +877,7 @@ function lineChart(points, metric, options = {}) {
   const gridRatios = [0, 0.25, 0.5, 0.75, 1];
   const gradientId = `chartLineGradient-${metric}-${points.length}-${Math.round(dataMin * 10)}-${Math.round(dataMax * 10)}`;
   const tooltip = (point) => point.tooltip || `${formatDate(point.date, { day: "2-digit", month: "long", year: "numeric" })} · ${formatNumber(point.value)} ${unit}`;
-  return `<div class="xy-chart-wrap"><svg class="xy-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Andamento ${unit}">
+  return `<div class="xy-chart-wrap"><div class="xy-chart-frame"><svg class="xy-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Andamento ${unit}">
     <defs>
       <linearGradient id="${gradientId}" x1="0" x2="1" y1="0" y2="0">
         <stop offset="0%" stop-color="#a7a0ff" />
@@ -890,7 +890,7 @@ function lineChart(points, metric, options = {}) {
     ${points.length > 1 ? `<polyline class="progress-line" points="${coordinates}" />` : ""}
     ${points.length === 1 ? `<circle class="single-progress-marker" cx="${x(0)}" cy="${y(points[0].value)}" r="5"><title>${escapeHtml(tooltip(points[0]))}</title></circle>` : ""}
     ${points.map((point, index) => `<circle class="chart-hit-point" cx="${x(index)}" cy="${y(point.value)}" r="16" tabindex="0"><title>${escapeHtml(tooltip(point))}</title></circle>`).join("")}
-  </svg></div>`;
+  </svg></div></div>`;
 }
 
 const EXERCISE_PERIODS = {

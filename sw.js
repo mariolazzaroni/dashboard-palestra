@@ -1,4 +1,4 @@
-const CACHE_NAME = "gymboard-v2-2-chart-layout-structural";
+const CACHE_NAME = "gymboard-v2-2-local-demo-mode";
 const APP_ASSETS = [
   "./",
   "./index.html",

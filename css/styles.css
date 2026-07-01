@@ -130,6 +130,13 @@ button {
   color: var(--text);
 }
 
+.user-badge:not([href]) {
+  border-color: rgb(151 142 255 / 38%);
+  background: rgb(151 142 255 / 14%);
+  color: var(--accent);
+  cursor: default;
+}
+
 .icon-button,
 .button {
   min-height: 44px;

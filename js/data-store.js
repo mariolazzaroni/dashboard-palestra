@@ -4,6 +4,10 @@ const EXERCISES_KEY = "gymboard-exercises-v1";
 const PLANS_KEY = "gymboard-plans-v1";
 const WORKOUTS_KEY = "gymboard-workouts-v2";
 const BODY_WEIGHTS_KEY = "gymboard-body-weights-v1";
+const DEMO_EXERCISES_KEY = "gymboard-demo-exercises-v1";
+const DEMO_PLANS_KEY = "gymboard-demo-plans-v1";
+const DEMO_WORKOUTS_KEY = "gymboard-demo-workouts-v1";
+const DEMO_BODY_WEIGHTS_KEY = "gymboard-demo-body-weights-v1";
 
 export const EXERCISE_CATEGORIES = ["Petto", "Schiena", "Spalle", "Gambe", "Bicipiti", "Tricipiti", "Core", "Altro"];
 
@@ -96,6 +100,12 @@ class LocalStore {
 }
 
 class LocalExerciseStore extends LocalStore {
+  constructor(key, plansKey = PLANS_KEY, workoutsKey = WORKOUTS_KEY) {
+    super(key);
+    this.plansKey = plansKey;
+    this.workoutsKey = workoutsKey;
+  }
+
   async getAll() {
     const exercises = await this.getRaw();
     const normalized = exercises.map((exercise) => ({ ...exercise, category: exerciseCategory(exercise.category) }));
@@ -156,16 +166,16 @@ class LocalExerciseStore extends LocalStore {
   async remove(id) {
     await super.remove(id);
 
-    const plans = JSON.parse(localStorage.getItem(PLANS_KEY) || "[]");
-    localStorage.setItem(PLANS_KEY, JSON.stringify(plans.map((plan) => ({
+    const plans = JSON.parse(localStorage.getItem(this.plansKey) || "[]");
+    localStorage.setItem(this.plansKey, JSON.stringify(plans.map((plan) => ({
       ...plan,
       exerciseIds: plan.exerciseIds?.filter((exerciseId) => exerciseId !== id),
       exerciseItems: plan.exerciseItems?.filter((item) => planExerciseItem(item).exerciseId !== id),
       exercises: Array.isArray(plan.exercises) ? plan.exercises.filter((name) => name !== id) : plan.exercises,
     }))));
 
-    const workouts = JSON.parse(localStorage.getItem(WORKOUTS_KEY) || "[]");
-    localStorage.setItem(WORKOUTS_KEY, JSON.stringify(workouts.map((workout) => {
+    const workouts = JSON.parse(localStorage.getItem(this.workoutsKey) || "[]");
+    localStorage.setItem(this.workoutsKey, JSON.stringify(workouts.map((workout) => {
       const exercises = (workout.exercises || []).filter((exercise) => exercise.exerciseId !== id);
       return { ...workout, exercises, volume: exercises.reduce((sum, exercise) => sum + Number(exercise.volume || 0), 0) };
     })));
@@ -542,9 +552,111 @@ class SupabaseBodyWeightStore {
   }
 }
 
-const localExercises = new LocalExerciseStore(EXERCISES_KEY);
+function daysAgo(days) {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() - days);
+  return date.toISOString();
+}
 
-export const exerciseStore = isSupabaseConfigured ? new SupabaseExerciseStore() : localExercises;
-export const planStore = isSupabaseConfigured ? new SupabasePlanStore() : new LocalPlanStore(PLANS_KEY, localExercises);
-export const workoutStore = isSupabaseConfigured ? new SupabaseWorkoutStore() : new LocalWorkoutStore(WORKOUTS_KEY, localExercises);
-export const bodyWeightStore = isSupabaseConfigured ? new SupabaseBodyWeightStore() : new LocalBodyWeightStore(BODY_WEIGHTS_KEY);
+function dateKeyDaysAgo(days) {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function demoExercise(id, name, category, days = 70) {
+  return { id, name, normalizedName: normalizeExerciseName(name), category, createdAt: daysAgo(days) };
+}
+
+function seedDemoData() {
+  const exercises = [
+    demoExercise("demo-panca-piana", "Panca piana", "Petto"),
+    demoExercise("demo-croci-manubri", "Croci manubri", "Petto"),
+    demoExercise("demo-lat-machine", "Lat machine", "Schiena"),
+    demoExercise("demo-rematore", "Rematore manubrio", "Schiena"),
+    demoExercise("demo-squat", "Squat", "Gambe"),
+    demoExercise("demo-leg-press", "Leg press", "Gambe"),
+    demoExercise("demo-shoulder-press", "Shoulder press", "Spalle"),
+    demoExercise("demo-curl", "Curl manubri", "Bicipiti"),
+    demoExercise("demo-plank", "Plank", "Core"),
+  ];
+  const plans = [
+    { id: "demo-plan-a", name: "Spinta", createdAt: daysAgo(68), archivedAt: null, exerciseItems: [
+      { exerciseId: "demo-panca-piana", plannedSets: 4, plannedReps: 8 },
+      { exerciseId: "demo-croci-manubri", plannedSets: 3, plannedReps: 12 },
+      { exerciseId: "demo-shoulder-press", plannedSets: 3, plannedReps: 10 },
+    ] },
+    { id: "demo-plan-b", name: "Trazione", createdAt: daysAgo(67), archivedAt: null, exerciseItems: [
+      { exerciseId: "demo-lat-machine", plannedSets: 4, plannedReps: 10 },
+      { exerciseId: "demo-rematore", plannedSets: 3, plannedReps: 10 },
+      { exerciseId: "demo-curl", plannedSets: 3, plannedReps: 12 },
+    ] },
+    { id: "demo-plan-c", name: "Gambe + Core", createdAt: daysAgo(65), archivedAt: null, exerciseItems: [
+      { exerciseId: "demo-squat", plannedSets: 4, plannedReps: 6 },
+      { exerciseId: "demo-leg-press", plannedSets: 3, plannedReps: 12 },
+      { exerciseId: "demo-plank", plannedSets: 3, plannedReps: 1 },
+    ] },
+  ];
+  const workoutDefs = [
+    [60, "demo-plan-a", "Spinta", [["demo-panca-piana", 4, 8, 55], ["demo-croci-manubri", 3, 12, 14], ["demo-shoulder-press", 3, 10, 20]]],
+    [54, "demo-plan-b", "Trazione", [["demo-lat-machine", 4, 10, 45], ["demo-rematore", 3, 10, 24], ["demo-curl", 3, 12, 10]]],
+    [47, "demo-plan-c", "Gambe + Core", [["demo-squat", 4, 6, 70], ["demo-leg-press", 3, 12, 110], ["demo-plank", 3, 1, 0]]],
+    [39, "demo-plan-a", "Spinta", [["demo-panca-piana", 4, 8, 60], ["demo-croci-manubri", 3, 12, 16], ["demo-shoulder-press", 3, 10, 22]]],
+    [31, "demo-plan-b", "Trazione", [["demo-lat-machine", 4, 10, 50], ["demo-rematore", 3, 10, 28], ["demo-curl", 3, 12, 12]]],
+    [24, "demo-plan-c", "Gambe + Core", [["demo-squat", 4, 6, 78], ["demo-leg-press", 3, 12, 120], ["demo-plank", 3, 1, 0]]],
+    [16, "demo-plan-a", "Spinta", [["demo-panca-piana", 4, 8, 65], ["demo-croci-manubri", 3, 12, 18], ["demo-shoulder-press", 3, 10, 24]]],
+    [8, "demo-plan-b", "Trazione", [["demo-lat-machine", 4, 10, 55], ["demo-rematore", 3, 10, 30], ["demo-curl", 3, 12, 14]]],
+    [2, "demo-plan-c", "Gambe + Core", [["demo-squat", 4, 6, 85], ["demo-leg-press", 3, 12, 130], ["demo-plank", 3, 1, 0]]],
+  ];
+  const exerciseById = new Map(exercises.map((exercise) => [exercise.id, exercise]));
+  const workouts = workoutDefs.map(([days, planId, name, rows], index) => {
+    const performed = rows.map(([exerciseId, sets, reps, load]) => {
+      const volume = sets * reps * load;
+      return { exerciseId, name: exerciseById.get(exerciseId).name, sets, reps, load, volume };
+    });
+    return {
+      id: `demo-workout-${index + 1}`,
+      planId,
+      name,
+      date: daysAgo(days),
+      duration: 1,
+      exercises: performed,
+      volume: performed.reduce((sum, exercise) => sum + exercise.volume, 0),
+      createdAt: daysAgo(days),
+    };
+  });
+  const bodyWeights = [56, 49, 42, 35, 28, 21, 14, 7, 0].map((days, index) => ({
+    id: `demo-weight-${index + 1}`,
+    date: dateKeyDaysAgo(days),
+    weight: Number((83.8 - index * 0.22).toFixed(1)),
+    createdAt: daysAgo(days),
+  }));
+  localStorage.setItem(DEMO_EXERCISES_KEY, JSON.stringify(exercises));
+  localStorage.setItem(DEMO_PLANS_KEY, JSON.stringify(plans));
+  localStorage.setItem(DEMO_WORKOUTS_KEY, JSON.stringify(workouts));
+  localStorage.setItem(DEMO_BODY_WEIGHTS_KEY, JSON.stringify(bodyWeights));
+}
+
+const localExercises = new LocalExerciseStore(EXERCISES_KEY);
+const demoExercises = new LocalExerciseStore(DEMO_EXERCISES_KEY, DEMO_PLANS_KEY, DEMO_WORKOUTS_KEY);
+
+export let exerciseStore = isSupabaseConfigured ? new SupabaseExerciseStore() : localExercises;
+export let planStore = isSupabaseConfigured ? new SupabasePlanStore() : new LocalPlanStore(PLANS_KEY, localExercises);
+export let workoutStore = isSupabaseConfigured ? new SupabaseWorkoutStore() : new LocalWorkoutStore(WORKOUTS_KEY, localExercises);
+export let bodyWeightStore = isSupabaseConfigured ? new SupabaseBodyWeightStore() : new LocalBodyWeightStore(BODY_WEIGHTS_KEY);
+
+export function enableDemoStores() {
+  seedDemoData();
+  exerciseStore = demoExercises;
+  planStore = new LocalPlanStore(DEMO_PLANS_KEY, demoExercises);
+  workoutStore = new LocalWorkoutStore(DEMO_WORKOUTS_KEY, demoExercises);
+  bodyWeightStore = new LocalBodyWeightStore(DEMO_BODY_WEIGHTS_KEY);
+}
+
+export function disableDemoStores() {
+  exerciseStore = isSupabaseConfigured ? new SupabaseExerciseStore() : localExercises;
+  planStore = isSupabaseConfigured ? new SupabasePlanStore() : new LocalPlanStore(PLANS_KEY, localExercises);
+  workoutStore = isSupabaseConfigured ? new SupabaseWorkoutStore() : new LocalWorkoutStore(WORKOUTS_KEY, localExercises);
+  bodyWeightStore = isSupabaseConfigured ? new SupabaseBodyWeightStore() : new LocalBodyWeightStore(BODY_WEIGHTS_KEY);
+}

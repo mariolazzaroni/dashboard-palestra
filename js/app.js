@@ -1,4 +1,4 @@
-import { bodyWeightStore, EXERCISE_CATEGORIES, exerciseStore, findExerciseMatches, normalizeExerciseName, planStore, workoutStore } from "./data-store.js";
+import { bodyWeightStore, disableDemoStores, enableDemoStores, EXERCISE_CATEGORIES, exerciseStore, findExerciseMatches, normalizeExerciseName, planStore, workoutStore } from "./data-store.js";
 import { isRememberSessionEnabled, setRememberSession } from "./auth-storage.js";
 import { isSupabaseConfigured, supabase, supabaseInitializationError } from "./supabase-client.js";
 import { buildWeeklyReport } from "./report-utils.js";
@@ -10,8 +10,10 @@ const installButton = document.querySelector("#install-button");
 const logoutButton = document.querySelector("#logout-button");
 const userBadge = document.querySelector("#user-badge");
 let currentUser = null;
+let demoMode = false;
 let deferredInstallPrompt;
 const ACTIVE_WORKOUT_KEY = "gymboard-active-workout-v1";
+const DEMO_MODE_KEY = "gymboard-demo-mode";
 
 function getActiveWorkout() {
   try { return JSON.parse(localStorage.getItem(ACTIVE_WORKOUT_KEY)); } catch { return null; }
@@ -106,11 +108,13 @@ async function getBodyWeights() {
 
 function setAuthenticatedLayout(authenticated) {
   document.body.classList.toggle("auth-mode", !authenticated);
-  logoutButton.hidden = !authenticated || !isSupabaseConfigured;
+  logoutButton.hidden = !authenticated || (!isSupabaseConfigured && !demoMode);
   installButton.hidden = !authenticated || isStandaloneApp();
   userBadge.hidden = !authenticated;
-  userBadge.textContent = authenticated ? accountDisplayName() : "";
-  userBadge.setAttribute("aria-label", authenticated ? "Apri account" : "");
+  userBadge.textContent = authenticated ? (demoMode ? "Modalità demo" : accountDisplayName()) : "";
+  userBadge.setAttribute("aria-label", authenticated && !demoMode ? "Apri account" : "");
+  if (demoMode) userBadge.removeAttribute("href");
+  else userBadge.setAttribute("href", "#account");
 }
 
 function renderAuth(mode = "login", message = "") {
@@ -131,6 +135,7 @@ function renderAuth(mode = "login", message = "") {
         ${isRegistration || isReset ? "" : `<label class="remember-control" for="auth-remember"><input id="auth-remember" name="remember" type="checkbox" ${isRememberSessionEnabled() ? "checked" : ""} /><span>Ricordami</span></label>`}
         <div class="auth-actions">
           <button class="button" type="submit">${isReset ? "Invia email reset" : isRegistration ? "Crea account" : "Accedi"}</button>
+          ${!isRegistration && !isReset ? '<button class="button secondary" id="demo-button" type="button">Prova demo</button>' : ""}
         </div>
       </form>
       ${!isRegistration && !isReset ? '<p class="auth-switch"><button class="text-button" id="forgot-password-button" type="button">Password dimenticata?</button></p>' : ""}
@@ -146,6 +151,7 @@ function renderAuth(mode = "login", message = "") {
     renderAuth(isRegistration || isReset ? "login" : "registration");
   });
   document.querySelector("#forgot-password-button")?.addEventListener("click", () => renderAuth("reset"));
+  document.querySelector("#demo-button")?.addEventListener("click", startDemoMode);
 }
 
 function authValues(mode) {
@@ -231,6 +237,20 @@ async function handleAuth(event, action) {
 async function showApp() {
   setAuthenticatedLayout(true);
   await router();
+}
+
+async function startDemoMode() {
+  demoMode = true;
+  sessionStorage.setItem(DEMO_MODE_KEY, "true");
+  clearActiveWorkout();
+  enableDemoStores();
+  currentUser = {
+    email: "demo@gymboard.local",
+    user_metadata: { full_name: "Demo GymBoard", first_name: "Demo", last_name: "GymBoard", display_name: "Demo" },
+  };
+  window.history.replaceState(null, "", "#home");
+  await showApp();
+  showToast("Modalità demo attiva");
 }
 
 function workoutCard(workout, removable = false) {
@@ -1045,13 +1065,22 @@ async function refreshCurrentUser() {
 
 async function cleanLogout() {
   clearActiveWorkout();
-  if (isSupabaseConfigured) await supabase.auth.signOut();
+  if (demoMode) {
+    demoMode = false;
+    sessionStorage.removeItem(DEMO_MODE_KEY);
+    disableDemoStores();
+  } else if (isSupabaseConfigured) await supabase.auth.signOut();
   currentUser = null;
   window.history.replaceState(null, "", "#home");
   renderAuth("login", "Logout effettuato.");
 }
 
 async function renderAccount() {
+  if (demoMode) {
+    showToast("Account disabilitato in modalità demo.");
+    window.location.hash = "home";
+    return;
+  }
   if (isSupabaseConfigured) {
     try { await refreshCurrentUser(); } catch (error) { showToast(error.message, true); }
   }
@@ -1186,6 +1215,10 @@ function requestAccountDeletion() {
 const routes = { home: renderHome, workouts: renderWorkouts, exercises: renderExercises, history: renderHistory, progress: renderProgress, account: renderAccount, reports: renderProgress, "exercise-progress": renderProgress };
 
 async function router() {
+  if (demoMode && window.location.hash.replace("#", "").split("?")[0] === "account") {
+    window.location.hash = "home";
+    return;
+  }
   if (isSupabaseConfigured && !currentUser) return renderAuth();
   showLoading();
   const routeWithParams = window.location.hash.slice(1) || "home";
@@ -1206,6 +1239,16 @@ async function initialize() {
   if (supabaseInitializationError) {
     setAuthenticatedLayout(false);
     showDataError(new Error("Impossibile caricare il client Supabase. Controlla la connessione e riprova."));
+    return;
+  }
+  if (sessionStorage.getItem(DEMO_MODE_KEY) === "true") {
+    enableDemoStores();
+    demoMode = true;
+    currentUser = {
+      email: "demo@gymboard.local",
+      user_metadata: { full_name: "Demo GymBoard", first_name: "Demo", last_name: "GymBoard", display_name: "Demo" },
+    };
+    await showApp();
     return;
   }
   if (!isSupabaseConfigured) {
